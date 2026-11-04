@@ -90,6 +90,16 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     // Real backdrop blur for the Liquid Glass surfaces (tab bar, cards)
     implementation("dev.chrisbanes.haze:haze:1.5.4")
+    constraints {
+        // Haze 1.5.4's runtime graph asks for androidx.activity 1.10.1,
+        // whose AAR metadata demands compileSdk 35 — this project is on
+        // AGP 8.5.2 / compileSdk 34 (CI run for 1.0.1 failed exactly
+        // there). Pin activity to the last 34-compatible line; Haze
+        // only touches stable activity APIs.
+        implementation("androidx.activity:activity:1.9.3")
+        implementation("androidx.activity:activity-ktx:1.9.3")
+        implementation("androidx.activity:activity-compose:1.9.3")
+    }
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
