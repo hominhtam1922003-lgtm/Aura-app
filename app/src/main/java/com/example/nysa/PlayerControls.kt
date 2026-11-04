@@ -28,8 +28,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,7 +56,9 @@ import com.example.nysa.data.model.EpisodeItem
 import com.example.nysa.data.model.ServerGroup
 import com.example.nysa.player.PlayerUiState
 import com.example.nysa.ui.components.FilterChips
+import com.example.nysa.ui.components.GlassSwitch
 import com.example.nysa.ui.components.glassSurface
+import com.example.nysa.ui.components.playerGlassSurface
 import com.example.nysa.ui.theme.LocalGlassEnabled
 import com.example.nysa.ui.detail.fmtNum
 import com.example.nysa.data.ServerStatus
@@ -195,6 +195,7 @@ internal fun PlayerControls(
     onPip: () -> Unit,
     onFullscreen: () -> Unit
 ) {
+    val glass = LocalGlassEnabled.current
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     // 1.3.14: the intro boundary is per title (learned), not a
     // universal 85 s — see PlayerActivity's introEndMs.
@@ -248,7 +249,7 @@ internal fun PlayerControls(
             }
             Row(
                 modifier = Modifier
-                    .background(Color(0x80000000), RoundedCornerShape(50))
+                    .playerGlassSurface(RoundedCornerShape(50), glass)
                     .clickable(onClick = onShowServers)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -272,7 +273,7 @@ internal fun PlayerControls(
                 modifier = Modifier.align(Alignment.CenterStart)
                     .padding(start = 14.dp)
                     .size(42.dp)
-                    .background(Color(0x80000000), CircleShape)
+                    .playerGlassSurface(CircleShape, glass)
                     .clickable(onClick = onLock),
                 contentAlignment = Alignment.Center
             ) {
@@ -290,8 +291,8 @@ internal fun PlayerControls(
             ) {
                 SeekButton(R.drawable.ic_seek_back, "Tua lùi", onSeekBack)
                 Box(
-                    modifier = Modifier.size(72.dp)
-                        .background(NySaViolet, CircleShape)
+                    modifier = Modifier.size(76.dp)
+                        .playerGlassSurface(CircleShape, glass)
                         .clickable(onClick = onPlayPause),
                     contentAlignment = Alignment.Center
                 ) {
@@ -319,13 +320,13 @@ internal fun PlayerControls(
                 Box(
                     modifier = Modifier.align(Alignment.CenterEnd)
                         .padding(end = 16.dp)
-                        .background(Color.White, RoundedCornerShape(50))
+                        .playerGlassSurface(RoundedCornerShape(50), glass)
                         .clickable(onClick = onSkipIntro)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
                         if (showSkipIntro) "Bỏ qua mở đầu ⏩" else "Bỏ qua kết thúc ⏩",
-                        color = Color.Black,
+                        color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -385,24 +386,25 @@ internal fun PlayerControls(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .playerGlassSurface(RoundedCornerShape(50), glass)
                     .clickable(onClick = onShowSpeed)
-                    .padding(horizontal = 8.dp, vertical = 7.dp)
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
             )
+            Spacer(Modifier.width(6.dp))
             Box(
                 modifier = Modifier
-                    .background(NySaViolet, RoundedCornerShape(8.dp))
+                    .playerGlassSurface(RoundedCornerShape(50), glass)
                     .clickable(onClick = onShowQuality)
-                    .padding(horizontal = 10.dp, vertical = 7.dp)
+                    .padding(horizontal = 11.dp, vertical = 7.dp)
             ) {
                 Text(qualityLabel, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.width(6.dp))
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .playerGlassSurface(RoundedCornerShape(50), glass)
                     .clickable(onClick = onShowEpisodes)
-                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -415,15 +417,16 @@ internal fun PlayerControls(
                 Text("Tập", color = Color.White, fontSize = 13.sp)
             }
             if (settings.pipEnabled) {
+                Spacer(Modifier.width(6.dp))
                 Text(
                     "PiP",
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .playerGlassSurface(RoundedCornerShape(50), glass)
                         .clickable(onClick = onPip)
-                        .padding(horizontal = 8.dp, vertical = 7.dp)
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
                 )
             }
             Icon(
@@ -441,9 +444,10 @@ internal fun PlayerControls(
 
 @Composable
 private fun ControlCircle(iconRes: Int, desc: String, onClick: () -> Unit) {
+    val glass = LocalGlassEnabled.current
     Box(
         modifier = Modifier.size(38.dp)
-            .background(Color(0x80000000), CircleShape)
+            .playerGlassSurface(CircleShape, glass)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -458,10 +462,11 @@ private fun ControlCircle(iconRes: Int, desc: String, onClick: () -> Unit) {
 
 @Composable
 private fun SeekButton(iconRes: Int, desc: String, onClick: () -> Unit) {
+    val glass = LocalGlassEnabled.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier.size(54.dp)
-                .background(Color(0x80000000), CircleShape)
+                .playerGlassSurface(CircleShape, glass)
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
@@ -795,12 +800,11 @@ internal fun QuickSettingsSheet(
                     Text("Bỏ qua mở đầu / kết thúc", color = Color.White, fontSize = 14.sp)
                     Text("Tự hiện nút bỏ qua ở đoạn intro, outro", color = NySaTextMuted, fontSize = 12.sp)
                 }
-                Switch(
+                GlassSwitch(
                     checked = settings.skipIntroOutro,
                     onCheckedChange = { on ->
                         scope.launch { app.settings.set(SettingsStore.SKIP_INTRO, on) }
-                    },
-                    colors = SwitchDefaults.colors(checkedTrackColor = NySaViolet)
+                    }
                 )
             }
             // 1.3.8: display size is a chevron row like Quality/Speed

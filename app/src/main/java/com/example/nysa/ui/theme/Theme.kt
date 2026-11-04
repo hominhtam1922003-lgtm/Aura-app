@@ -10,6 +10,13 @@ import androidx.compose.ui.graphics.Color
 /** True while the approved Liquid Glass look is on; false = the plain black theme. */
 val LocalGlassEnabled = staticCompositionLocalOf { true }
 
+/**
+ * Backdrop-blur state shared by the shell's glass surfaces (tab bar,
+ * banner, settings cards). Null where no haze source is mounted (the
+ * detail underlay copy) — glass there falls back to its tint layers.
+ */
+val LocalHazeState = staticCompositionLocalOf<dev.chrisbanes.haze.HazeState?> { null }
+
 private fun nySaScheme(glass: Boolean) = darkColorScheme(
     primary = NySaViolet,
     background = if (glass) NySaBackground else NySaBackgroundPlain,

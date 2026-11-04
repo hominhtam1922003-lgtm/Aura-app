@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,7 +62,7 @@ import com.example.nysa.data.model.TitleItem
 import com.example.nysa.data.toEntity
 import com.example.nysa.data.toItem
 import com.example.nysa.data.versionPriorityOrder
-import com.example.nysa.ui.components.glassSurface
+import com.example.nysa.ui.components.LiquidGlassBox
 import com.example.nysa.ui.components.underlayBlur
 import com.example.nysa.ui.detail.DetailScreen
 import com.example.nysa.ui.home.HomeScreen
@@ -72,7 +73,10 @@ import com.example.nysa.ui.search.SearchScreen
 import com.example.nysa.ui.section.SectionScreen
 import com.example.nysa.ui.section.SectionViewModel
 import com.example.nysa.ui.theme.LocalGlassEnabled
+import com.example.nysa.ui.theme.LocalHazeState
 import com.example.nysa.ui.theme.NySaTheme
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.example.nysa.work.NewEpisodeWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -176,6 +180,10 @@ private fun NySaShell() {
     var detailItem by remember { mutableStateOf<TitleItem?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     val shellScope = rememberCoroutineScope()
+    // One backdrop-blur state for the whole tab shell: the tab content
+    // is the source; the tab bar, the banner and the settings cards
+    // are the children that blur it (1.0.1 glass rebuild).
+    val shellHaze = remember { HazeState() }
 
     // Tab ViewModels live in the ACTIVITY's ViewModelStore — they
     // survive tab switches untouched, which (with the
@@ -285,24 +293,34 @@ private fun NySaShell() {
 
     BackHandler(enabled = selected != 0) { selected = 0 }
 
+    CompositionLocalProvider(LocalHazeState provides shellHaze) {
     Box(modifier = Modifier.fillMaxSize()) {
-        TabContent(
-            selected = selected,
-            homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
-            onOpenTitle = openTitle,
-            onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
-            onResume = resumeByItem,
-            onGoSearch = { searchOpen = true }
-        )
+        // The tab content is the backdrop source the glass blurs.
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .then(if (glass) Modifier.hazeSource(shellHaze) else Modifier)
+        ) {
+            TabContent(
+                selected = selected,
+                homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
+                onOpenTitle = openTitle,
+                onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
+                onResume = resumeByItem,
+                onGoSearch = { searchOpen = true }
+            )
+        }
 
-        // Floating glass tab pill (approved design). In plain mode it
-        // is the same pill in flat dark gray — layout never changes.
-        Row(
+        // Floating glass tab pill (approved design): REAL backdrop
+        // blur since 1.0.1. In plain mode it is the same pill in flat
+        // dark gray — layout never changes.
+        LiquidGlassBox(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 18.dp, vertical = 14.dp)
-                .glassSurface(RoundedCornerShape(50), glass)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            shape = RoundedCornerShape(50)
+        ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -342,6 +360,7 @@ private fun NySaShell() {
                 }
             }
         }
+        }
 
         // Liquid new-episode banner (approved design): drops from the
         // top edge with a springy melt, names the titles — no counts.
@@ -363,6 +382,7 @@ private fun NySaShell() {
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+    }
     }
 }
 
@@ -433,14 +453,15 @@ private fun LiquidNewEpisodeBanner(
                 scaleY = 1f + (stretch - 1f) * 0.10f
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
             }
-            .glassSurface(
-                RoundedCornerShape(26.dp, 26.dp, bottomRadius, bottomRadius),
-                glass
-            )
             .clickable(onClick = onOpen)
-            .padding(horizontal = 16.dp, vertical = 13.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+      LiquidGlassBox(
+          shape = RoundedCornerShape(26.dp, 26.dp, bottomRadius, bottomRadius)
+      ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_bell),
                 contentDescription = null,
@@ -482,5 +503,6 @@ private fun LiquidNewEpisodeBanner(
                 modifier = Modifier.size(17.dp).clickable(onClick = onDismiss)
             )
         }
+      }
     }
 }

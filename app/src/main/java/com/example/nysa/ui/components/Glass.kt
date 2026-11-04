@@ -1,6 +1,7 @@
 package com.example.nysa.ui.components
 
 import android.os.Build
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,10 +10,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,47 +37,151 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.nysa.ui.theme.LocalGlassEnabled
+import com.example.nysa.ui.theme.LocalHazeState
 import com.example.nysa.ui.theme.NySaSurfacePlain
 import com.example.nysa.ui.theme.NySaTextMuted
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
 
 /**
- * The approved Liquid Glass surface.
+ * The Liquid Glass system (rebuilt for 1.0.1 after the on-device
+ * verdict "mất liquid glass, nút trắng đục").
  *
- * PERFORMANCE GATE (user order): the glass here is a static gradient
- * fill + a specular edge border — it costs one gradient draw, works on
- * every list cell, and never blurs per item. Backdrop blur is used in
- * exactly one place ([underlayBlur]): the single static layer behind
- * the detail / player sheets, and only on API 31+ where RenderEffect
- * exists. With the glass setting OFF this collapses to the plain
- * theme's flat dark-gray panel (#1C1C1F), no gradient, no border.
+ * Two layers, because one size does not fit all surfaces:
+ *
+ * 1. REAL backdrop blur (Haze) for the big floating surfaces — the
+ *    tab bar, the new-episode banner, the settings cards — via
+ *    [LiquidGlassBox]. The blurred layer is a full-size child clipped
+ *    by its parent, so corners are always exact. Blur exists on
+ *    API 31+; below that Haze serves the fallback tint and the rim /
+ *    sheen layers below still carry the glass read.
+ * 2. Layered tint + specular rim + top sheen ([glassSurface]) for
+ *    everything in layout flow (chips, list panels, sheets) — the
+ *    layers are noticeably brighter than the 1.0.0 pass, whose 3–10%
+ *    white over pure black read as flat black on the device.
+ *
+ * The player cannot use backdrop blur (its video is a SurfaceView —
+ * Compose cannot sample its pixels), so its controls use
+ * [playerGlassSurface]: the same rim + sheen over a translucent
+ * BLACK tint, which reads as dark glass over bright video and kills
+ * the old solid-white fills. Glass OFF collapses every surface to
+ * the plain theme's flat panels, as approved.
  */
 fun Modifier.glassSurface(shape: Shape, glass: Boolean): Modifier = this
     .clip(shape)
     .then(
         if (glass) {
-            Modifier.background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.10f),
-                        Color.White.copy(alpha = 0.03f),
-                        Color.White.copy(alpha = 0.06f)
+            Modifier
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.15f),
+                            Color.White.copy(alpha = 0.05f),
+                            Color.White.copy(alpha = 0.09f)
+                        )
                     )
                 )
-            ).border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.45f),
-                        Color.White.copy(alpha = 0.10f),
-                        Color.White.copy(alpha = 0.22f)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.12f),
+                            Color.White.copy(alpha = 0.0f)
+                        ),
+                        startY = 0f,
+                        endY = 110f
                     )
-                ),
-                shape = shape
-            )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.55f),
+                            Color.White.copy(alpha = 0.12f),
+                            Color.White.copy(alpha = 0.28f)
+                        )
+                    ),
+                    shape = shape
+                )
         } else {
             Modifier.background(NySaSurfacePlain)
         }
     )
+
+/** Dark glass for surfaces floating over video (no backdrop blur possible there). */
+fun Modifier.playerGlassSurface(shape: Shape, glass: Boolean): Modifier = this
+    .clip(shape)
+    .then(
+        if (glass) {
+            Modifier
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.44f),
+                            Color.Black.copy(alpha = 0.30f),
+                            Color.Black.copy(alpha = 0.40f)
+                        )
+                    )
+                )
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.15f),
+                            Color.White.copy(alpha = 0.0f)
+                        ),
+                        startY = 0f,
+                        endY = 70f
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.45f),
+                            Color.White.copy(alpha = 0.10f),
+                            Color.White.copy(alpha = 0.22f)
+                        )
+                    ),
+                    shape = shape
+                )
+        } else {
+            Modifier.background(Color.Black.copy(alpha = 0.55f))
+        }
+    )
+
+/**
+ * A glass surface with REAL backdrop blur when a [HazeState] is in
+ * scope (shell surfaces, settings cards). The blur layer is clipped
+ * by the parent's shape, then the tint/rim/sheen layer, then content.
+ */
+@Composable
+fun LiquidGlassBox(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(22.dp),
+    hazeState: HazeState? = LocalHazeState.current,
+    blurRadius: Dp = 26.dp,
+    content: @Composable () -> Unit
+) {
+    val glass = LocalGlassEnabled.current
+    if (!glass) {
+        Box(modifier = modifier.glassSurface(shape, false)) { content() }
+        return
+    }
+    Box(modifier = modifier.clip(shape)) {
+        if (hazeState != null) {
+            Box(
+                modifier = Modifier.matchParentSize().hazeChild(hazeState) {
+                    this.blurRadius = blurRadius
+                    tints = listOf(HazeTint(Color.White.copy(alpha = 0.05f)))
+                    noiseFactor = 0.04f
+                    fallbackTint = HazeTint(Color(0xFF17171F).copy(alpha = 0.72f))
+                }
+            )
+        }
+        Box(modifier = Modifier.matchParentSize().glassSurface(shape, true))
+        content()
+    }
+}
 
 @Composable
 fun GlassPanel(
@@ -80,8 +189,92 @@ fun GlassPanel(
     shape: Shape = RoundedCornerShape(20.dp),
     content: @Composable () -> Unit
 ) {
+    LiquidGlassBox(modifier = modifier, shape = shape, content = content)
+}
+
+/**
+ * The ambient backdrop the settings glass blurs: near-black with
+ * three very soft colour glows, so the cards have something to
+ * refract and never read as flat black rectangles.
+ */
+@Composable
+fun AmbientBackdrop(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(
+            Brush.verticalGradient(
+                listOf(Color(0xFF06060A), Color(0xFF0A0A13), Color(0xFF06060A))
+            )
+        )
+    ) {
+        Box(
+            modifier = Modifier.size(340.dp).offset(x = (-90).dp, y = (-120).dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color(0xFF6366F1).copy(alpha = 0.20f), Color.Transparent)
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier.size(300.dp).align(Alignment.TopEnd)
+                .offset(x = 110.dp, y = 30.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color(0xFF0EA5E9).copy(alpha = 0.12f), Color.Transparent)
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier.size(360.dp).align(Alignment.BottomStart)
+                .offset(x = (-120).dp, y = 120.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color(0xFFD97706).copy(alpha = 0.10f), Color.Transparent)
+                    )
+                )
+        )
+    }
+}
+
+/** iOS-style switch drawn in the glass language (the stock Material switch read as a white blob). */
+@Composable
+fun GlassSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val glass = LocalGlassEnabled.current
-    Box(modifier = modifier.glassSurface(shape, glass)) { content() }
+    val thumbOffset by animateDpAsState(
+        targetValue = if (checked) 22.dp else 2.dp,
+        label = "glassSwitchThumb"
+    )
+    val shape = RoundedCornerShape(50)
+    Box(
+        modifier = modifier
+            .size(width = 52.dp, height = 32.dp)
+            .clip(shape)
+            .then(
+                when {
+                    checked -> Modifier.background(
+                        Brush.horizontalGradient(
+                            listOf(Color.White, Color(0xFFDFDFEA))
+                        )
+                    )
+                    glass -> Modifier.background(Color.White.copy(alpha = 0.16f))
+                        .border(1.dp, Color.White.copy(alpha = 0.32f), shape)
+                    else -> Modifier.background(Color.White.copy(alpha = 0.22f))
+                }
+            )
+            .clickable { onCheckedChange(!checked) }
+    ) {
+        Box(
+            modifier = Modifier
+                .offset(x = thumbOffset)
+                .align(Alignment.CenterStart)
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(if (checked) Color(0xFF111114) else Color.White)
+        )
+    }
 }
 
 /**
@@ -114,10 +307,19 @@ fun GlassChip(
         .then(
             if (glass) {
                 Modifier.background(
-                    if (selected) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f)
+                    if (selected) Color.White.copy(alpha = 0.26f) else Color.White.copy(alpha = 0.08f)
+                ).background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.12f),
+                            Color.White.copy(alpha = 0.0f)
+                        ),
+                        startY = 0f,
+                        endY = 42f
+                    )
                 ).border(
                     1.dp,
-                    if (selected) Color.White.copy(alpha = 0.75f) else Color.White.copy(alpha = 0.28f),
+                    if (selected) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.34f),
                     shape
                 )
             } else {

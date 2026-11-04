@@ -82,6 +82,8 @@ import com.example.nysa.ui.theme.NySaBackground
 import com.example.nysa.ui.theme.NySaGreen
 import com.example.nysa.ui.theme.NySaRed
 import com.example.nysa.ui.theme.NySaTextMuted
+import com.example.nysa.ui.components.playerGlassSurface
+import com.example.nysa.ui.theme.LocalGlassEnabled
 import com.example.nysa.ui.theme.NySaTheme
 import com.example.nysa.ui.theme.NySaViolet
 import kotlinx.coroutines.Dispatchers
@@ -110,7 +112,9 @@ class PlayerActivity : ComponentActivity() {
         val episodeSlug = intent.getStringExtra(EXTRA_EPISODE_SLUG).orEmpty()
         val episodeNumber = intent.getFloatExtra(EXTRA_EPISODE_NUMBER, 0f)
         setContent {
-            NySaTheme {
+            val app = application as NySaApp
+            val settings by app.settings.flow.collectAsState(initial = AppSettings())
+            NySaTheme(glass = settings.liquidGlass) {
                 PlayerScreen(
                     titleId = titleId,
                     episodeSlug = episodeSlug,
@@ -208,6 +212,7 @@ private fun PlayerScreen(
     }
     val state by viewModel.state.collectAsState()
     val settings by app.settings.flow.collectAsState(initial = AppSettings())
+    val glassEnabled = LocalGlassEnabled.current
 
     if (state.kind == PlaybackKind.EMBED) {
         EmbedPlayer(state = state, viewModel = viewModel, onBack = onBack)
@@ -810,7 +815,7 @@ private fun PlayerScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 18.dp)
-                    .background(Color(0x59000000), RoundedCornerShape(50))
+                    .playerGlassSurface(RoundedCornerShape(50), glassEnabled)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
@@ -827,7 +832,7 @@ private fun PlayerScreen(
                 modifier = Modifier
                     .align(if (flash.startsWith("−")) Alignment.CenterStart else Alignment.CenterEnd)
                     .padding(horizontal = 90.dp)
-                    .background(Color(0xB3000000), RoundedCornerShape(50))
+                    .playerGlassSurface(RoundedCornerShape(50), glassEnabled)
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Text(flash, color = Color.White, fontSize = 13.sp)

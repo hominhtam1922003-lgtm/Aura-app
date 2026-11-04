@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.nysa"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     signingConfigs {
@@ -88,6 +88,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.material3:material3")
+    // Real backdrop blur for the Liquid Glass surfaces (tab bar, cards)
+    implementation("dev.chrisbanes.haze:haze:1.5.4")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
