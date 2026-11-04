@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -271,26 +273,30 @@ private fun FilterGroup(title: String, content: @Composable () -> Unit) {
     content()
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilterChipRow(
     options: List<Pair<Int, String>>,
     selected: Int,
     onSelect: (Int) -> Unit
 ) {
-    // FlowRow would need the foundation-layout artifact's opt-in; a
-    // wrapping Row via chunked rows keeps the sheet dependency-free.
-    val rows = options.chunked(4)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (value, label) ->
-                    GlassChip(
-                        label = label,
-                        selected = selected == value,
-                        onClick = { onSelect(value) }
-                    )
-                }
-            }
+    // Real FlowRow (1.0.3 fix): the old hand-chunked rows of 4 forced
+    // long labels into whatever space a plain Row had left, squeezing
+    // them into two-line circles and per-character vertical pills on
+    // the device ("Hành Động", "Tâm Lý", "Thần Thoại"). FlowRow
+    // measures every chip at its intrinsic width and wraps whole
+    // chips to the next line instead.
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { (value, label) ->
+            GlassChip(
+                label = label,
+                selected = selected == value,
+                onClick = { onSelect(value) }
+            )
         }
     }
     if (options.isEmpty()) {

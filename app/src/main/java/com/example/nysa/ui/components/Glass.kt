@@ -312,7 +312,11 @@ fun GlassChip(
                 else -> NySaTextMuted
             },
             fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            // A chip's label never wraps inside the chip (1.0.3 filter
+            // fix) — parents must give it its full intrinsic width.
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

@@ -42,8 +42,9 @@ data class SectionUiState(
  * exist in that tab's own catalog —
  *  - Phim: genres/regions come from the source's taxonomy tables
  *    (the phim pool spans them), years accumulate from loaded items.
- *  - Anime: the pool is small and country-gated, so genres AND years
- *    accumulate strictly from anime items actually loaded.
+ *  - Anime: the pool is small and country-gated; years accumulate
+ *    from loaded items, genres from those items' detail records
+ *    (list records carry no secondary genres — see probeAnimeGenres).
  * Status filtering is local (the API has no reliable status field —
  * completion is derived from episode counts in the model).
  */
@@ -56,6 +57,9 @@ class SectionViewModel(
     val state: StateFlow<SectionUiState> = _state.asStateFlow()
 
     private var generation = 0
+
+    /** One-shot flag for the Anime genre probe (see probeAnimeGenres). */
+    private var genreProbeDone = false
 
     init {
         viewModelScope.launch {
@@ -151,6 +155,10 @@ class SectionViewModel(
                         }
                     )
                 }
+                if (family == Family.ANIME && !genreProbeDone) {
+                    genreProbeDone = true
+                    probeAnimeGenres(result.items.take(10))
+                }
             } catch (e: Exception) {
                 if (gen != generation) return@launch
                 _state.update {
@@ -161,6 +169,39 @@ class SectionViewModel(
                         error = if (page == 1 && it.items.isEmpty()) {
                             "Không tải được mục này — nguồn chưa phản hồi. Bấm để thử lại."
                         } else ""
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Anime genre facets (1.0.3): COBE list items carry ONLY the
+     * pinned "Hoạt hình" category — secondary genres exist solely on
+     * detail records (measured live against the API: Dragon Ball
+     * Daima → Hài Hước / Trẻ Em / Viễn Tưởng / Phiêu Lưu). So once
+     * per ViewModel, sample the details of the first loaded anime
+     * titles and merge their real genre lists into the filter
+     * options. Every chip offered is backed by at least one real
+     * title in the pool — no invented facets.
+     */
+    private fun probeAnimeGenres(sample: List<TitleItem>) {
+        if (sample.isEmpty()) return
+        viewModelScope.launch {
+            val seen = LinkedHashMap<String, String>()
+            _state.value.genreOptions.forEach { seen[it.id] = it.name }
+            val before = seen.size
+            for (item in sample) {
+                val detail = runCatching { app.cobe.detail(item.slug) }.getOrNull()
+                    ?: continue
+                detail.genreLinks.forEach { (name, id) ->
+                    if (id != "24") seen.putIfAbsent(id, name)
+                }
+            }
+            if (seen.size > before) {
+                _state.update {
+                    it.copy(
+                        genreOptions = seen.map { (id, name) -> FilterOption(id, name) }
                     )
                 }
             }
