@@ -32,7 +32,12 @@ android {
                 storeFile = file(ksFile)
                 storePassword = System.getenv("NYSA_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("NYSA_KEY_ALIAS")
-                keyPassword = System.getenv("NYSA_KEY_PASSWORD")
+                // PKCS12 keystore: the key password IS the store password
+                // (proven locally with jarsigner 2026-11-04). Never read a
+                // separate NYSA_KEY_PASSWORD secret here — the value kept
+                // for it cannot recover the key and failed
+                // :app:packageRelease in CI runs #3 and #4.
+                keyPassword = System.getenv("NYSA_KEYSTORE_PASSWORD")
             } else {
                 val propsFile = rootProject.file("keystore.properties")
                 if (propsFile.exists()) {
