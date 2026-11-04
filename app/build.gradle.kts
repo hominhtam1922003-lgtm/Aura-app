@@ -1,6 +1,4 @@
 import java.util.Properties
-import java.security.KeyStore
-import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -40,32 +38,6 @@ android {
                 // for it cannot recover the key and failed
                 // :app:packageRelease in CI runs #3 and #4.
                 keyPassword = System.getenv("NYSA_KEYSTORE_PASSWORD")
-                // TEMP DIAGNOSTIC — remove once CI signing works. Prints
-                // keystore facts (never passwords) into the build log so
-                // the exact wrong CI input is visible.
-                val diagPw = (storePassword ?: "").toCharArray()
-                try {
-                    val ksP = KeyStore.getInstance("PKCS12")
-                    ksP.load(storeFile!!.inputStream(), diagPw)
-                    println("NYSA-DIAG PKCS12 opened; aliases=" + ksP.aliases().toList())
-                    println("NYSA-DIAG PKCS12 getKey(storePw) ok -> " + (ksP.getKey(keyAlias, diagPw) != null))
-                    val certP = ksP.getCertificate(keyAlias)
-                    if (certP != null) {
-                        val hexP = MessageDigest.getInstance("SHA-256").digest(certP.encoded).joinToString("") { "%02x".format(it) }
-                        println("NYSA-DIAG PKCS12 certSHA256=$hexP")
-                    }
-                } catch (e: Exception) {
-                    println("NYSA-DIAG PKCS12 FAILED: " + e.javaClass.name + ": " + e.message)
-                }
-                try {
-                    val ksJ = KeyStore.getInstance("JKS")
-                    ksJ.load(storeFile!!.inputStream(), diagPw)
-                    println("NYSA-DIAG JKS opened; aliases=" + ksJ.aliases().toList())
-                    println("NYSA-DIAG JKS getKey(storePw) ok -> " + (ksJ.getKey(keyAlias, diagPw) != null))
-                } catch (e: Exception) {
-                    println("NYSA-DIAG JKS FAILED: " + e.javaClass.name + ": " + e.message)
-                }
-                println("NYSA-DIAG storeFileBytes=" + storeFile!!.length())
             } else {
                 val propsFile = rootProject.file("keystore.properties")
                 if (propsFile.exists()) {
