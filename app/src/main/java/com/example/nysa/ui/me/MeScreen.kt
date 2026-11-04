@@ -38,6 +38,8 @@ import com.example.nysa.NySaApp
 import com.example.nysa.data.AppSettings
 import com.example.nysa.data.ReportStore
 import com.example.nysa.data.SettingsStore
+import com.example.nysa.data.UpdateCheck
+import com.example.nysa.data.UpdateChecker
 import com.example.nysa.ui.components.AmbientBackdrop
 import com.example.nysa.ui.components.GlassSwitch
 import com.example.nysa.ui.components.LiquidGlassBox
@@ -78,6 +80,25 @@ fun MeScreen() {
             healthMs = ms
             healthAt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
                 .format(java.util.Date())
+        }
+    }
+
+    // Phiên bản: current version from PackageManager (never a
+    // hardcoded string); the check itself lives in UpdateChecker.
+    val currentVersion = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull() ?: ""
+    }
+    var updateCheck by remember { mutableStateOf<UpdateCheck?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
+
+    fun checkUpdate() {
+        if (checkingUpdate) return
+        checkingUpdate = true
+        scope.launch {
+            updateCheck = UpdateChecker.check(currentVersion)
+            checkingUpdate = false
         }
     }
     LaunchedEffect(Unit) {
@@ -270,6 +291,80 @@ fun MeScreen() {
                                 reportCount = 0
                             }
                         }.padding(4.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+
+            SectionTitle("PHIÊN BẢN")
+            LiquidGlassBox(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        "Phiên bản hiện tại: ${currentVersion.ifBlank { "—" }}",
+                        color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    val avail = updateCheck as? UpdateCheck.Available
+                    when {
+                        checkingUpdate -> {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Đang kiểm tra…",
+                                color = NySaTextMuted, fontSize = 12.5.sp
+                            )
+                        }
+                        updateCheck is UpdateCheck.UpToDate -> {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Đang là bản mới nhất",
+                                color = NySaGreen, fontSize = 12.5.sp
+                            )
+                        }
+                        avail != null -> {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Có bản mới ${avail.version}",
+                                color = NySaGreen, fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Tải bản mới",
+                                color = Color.White, fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    val url = avail.apkUrl.ifBlank {
+                                        "https://github.com/hominhtam1922003-lgtm/NySa-app/releases/latest"
+                                    }
+                                    runCatching {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse(url)
+                                            ).addFlags(
+                                                android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                            )
+                                        )
+                                    }
+                                }.padding(2.dp)
+                            )
+                        }
+                        updateCheck is UpdateCheck.Failed -> {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Không kiểm tra được, thử lại sau",
+                                color = NySaTextMuted, fontSize = 12.5.sp
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Kiểm tra bản mới",
+                        color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable(enabled = !checkingUpdate) { checkUpdate() }
+                            .padding(2.dp)
                     )
                 }
             }

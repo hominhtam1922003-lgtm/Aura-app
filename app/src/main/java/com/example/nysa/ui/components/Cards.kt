@@ -56,7 +56,8 @@ fun TitlePosterCard(
                 titleName = item.name,
                 widthDp = cardWidth,
                 heightDp = posterHeight,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                fallbackUrl = item.thumbUrl
             )
             // Episode badge (bottom-left, glass pill)
             if (item.latestLabel.isNotBlank()) {
@@ -140,7 +141,8 @@ fun ContinueCard(
                 titleName = item.name,
                 widthDp = cardWidth,
                 heightDp = thumbHeight,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                fallbackUrl = item.posterUrl
             )
             // Progress bar (the user's violet in the old design is the
             // white accent here — near-white on a dark track).

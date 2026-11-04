@@ -9,11 +9,16 @@ import com.example.nysa.data.model.TitleItem
 import com.example.nysa.data.model.matchesStatus
 import com.example.nysa.data.source.FilterOption
 import com.example.nysa.data.toEntity
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class SectionUiState(
     val subType: String = "all",          // all | series | movie
@@ -72,6 +77,26 @@ class SectionViewModel(
                     it.copy(genreOptions = genres, countryOptions = regions)
                 }
             }
+            // 1.0.4: restore the Anime tab's probed genre facets from
+            // the persisted cache so the filter opens complete; the
+            // one-shot probe below only tops the list up from live
+            // data. Runs alongside reload(), never blocks it.
+            if (family == Family.ANIME) {
+                val cached = runCatching { app.settings.animeGenreCache.first() }
+                    .getOrDefault(emptyList())
+                if (cached.isNotEmpty()) {
+                    _state.update { cur ->
+                        val seen = LinkedHashMap<String, String>()
+                        cur.genreOptions.forEach { seen[it.id] = it.name }
+                        cached.forEach { (id, name) ->
+                            if (id != "24") seen.putIfAbsent(id, name)
+                        }
+                        cur.copy(
+                            genreOptions = seen.map { (id, name) -> FilterOption(id, name) }
+                        )
+                    }
+                }
+            }
         }
         reload()
     }
@@ -113,38 +138,69 @@ class SectionViewModel(
                     "movie" -> "movie"
                     else -> null
                 }
-                val result = when (family) {
-                    Family.PHIM -> app.cobe.phimPage(
-                        type = type,
-                        genreId = s.genreId,
-                        countryId = s.countryId,
-                        year = s.year,
-                        page = page
-                    )
-                    Family.ANIME -> app.cobe.animePage(
-                        type = type ?: "series",
-                        genreId = s.genreId,
-                        year = s.year,
-                        page = page
-                    )
+                // 1.0.4 (mục 7, Phim only): the local filters (anime
+                // dropped + status matched locally) can leave a fetched
+                // page nearly empty, so keep fetching forward — at most
+                // 3 extra pages — until this call yields a fair amount.
+                // Anime keeps one page per call. A failure on an EXTRA
+                // page keeps what was already gathered and leaves
+                // hasMore on so the user can scroll on; only a
+                // first-page failure reaches the error path below.
+                var nextPage = page
+                var extraPages = 0
+                var lastHasMore = true
+                var extraFailed = false
+                val fetchedItems = mutableListOf<TitleItem>()
+                val visibleItems = mutableListOf<TitleItem>()
+                while (true) {
+                    val result = try {
+                        when (family) {
+                            Family.PHIM -> app.cobe.phimPage(
+                                type = type,
+                                genreId = s.genreId,
+                                countryId = s.countryId,
+                                year = s.year,
+                                page = nextPage
+                            )
+                            Family.ANIME -> app.cobe.animePage(
+                                type = type ?: "series",
+                                genreId = s.genreId,
+                                year = s.year,
+                                page = nextPage
+                            )
+                        }
+                    } catch (e: Exception) {
+                        if (extraPages == 0 && fetchedItems.isEmpty()) throw e
+                        extraFailed = true
+                        null
+                    }
+                    if (result == null) break
+                    if (gen != generation) return@launch
+                    app.database.titleDao().upsertAll(result.items.map { it.toEntity() })
+                    fetchedItems += result.items
+                    visibleItems += result.items.filter { it.matchesStatus(s.status) }
+                    lastHasMore = result.hasMore
+                    val wantMore = family == Family.PHIM &&
+                        visibleItems.size < 12 && result.hasMore && extraPages < 3
+                    if (!wantMore) break
+                    extraPages++
+                    nextPage++
                 }
                 if (gen != generation) return@launch
-                val visible = result.items.filter { it.matchesStatus(s.status) }
-                app.database.titleDao().upsertAll(result.items.map { it.toEntity() })
                 _state.update { cur ->
-                    val merged = if (page == 1) visible else cur.items + visible
+                    val merged = if (page == 1) visibleItems else cur.items + visibleItems
                     cur.copy(
                         items = merged.distinctBy { it.slug },
-                        page = page,
-                        hasMore = result.hasMore,
+                        page = nextPage,
+                        hasMore = if (extraFailed) true else lastHasMore,
                         loading = false,
                         loadingMore = false,
-                        yearOptions = (cur.yearOptions + result.items.map { it.year })
+                        yearOptions = (cur.yearOptions + fetchedItems.map { it.year })
                             .filter { it > 0 }.distinct().sortedDescending(),
                         genreOptions = if (family == Family.ANIME) {
                             val seen = LinkedHashMap<String, String>()
                             cur.genreOptions.forEach { seen[it.id] = it.name }
-                            result.items.forEach { item ->
+                            fetchedItems.forEach { item ->
                                 item.genreIds.zip(item.genres).forEach { (id, name) ->
                                     if (id != 24) seen.putIfAbsent(id.toString(), name)
                                 }
@@ -155,9 +211,15 @@ class SectionViewModel(
                         }
                     )
                 }
+                // 1.0.4 (mục 5): fire the genre probe once the pool is
+                // deep enough to be representative (>= 30 accumulated
+                // titles) or exhausted (no more pages).
                 if (family == Family.ANIME && !genreProbeDone) {
-                    genreProbeDone = true
-                    probeAnimeGenres(result.items.take(10))
+                    val acc = _state.value
+                    if (acc.items.size >= 30 || !acc.hasMore) {
+                        genreProbeDone = true
+                        probeAnimeGenres(acc.items.take(30))
+                    }
                 }
             } catch (e: Exception) {
                 if (gen != generation) return@launch
@@ -176,33 +238,42 @@ class SectionViewModel(
     }
 
     /**
-     * Anime genre facets (1.0.3): COBE list items carry ONLY the
-     * pinned "Hoạt hình" category — secondary genres exist solely on
-     * detail records (measured live against the API: Dragon Ball
-     * Daima → Hài Hước / Trẻ Em / Viễn Tưởng / Phiêu Lưu). So once
-     * per ViewModel, sample the details of the first loaded anime
-     * titles and merge their real genre lists into the filter
-     * options. Every chip offered is backed by at least one real
-     * title in the pool — no invented facets.
+     * Anime genre facets: COBE list items carry ONLY the pinned
+     * "Hoạt hình" category — secondary genres exist solely on the
+     * by-slug records (measured live against the API: Dragon Ball
+     * Daima → Hài Hước / Trẻ Em / Viễn Tưởng / Phiêu Lưu). Once per
+     * ViewModel, sample up to 30 accumulated titles through the LIGHT
+     * genresOf call (categories only — 1.0.4; the 1.0.3 probe paid a
+     * full detail() load, episodes included, for each of 10 titles),
+     * five in parallel, and merge their real genre lists into the
+     * filter options. The merged list is persisted
+     * (SettingsStore.animeGenreCache) so later cold starts restore it
+     * in init instead of probing again. Every chip offered is backed
+     * by at least one real title in the pool — no invented facets.
      */
     private fun probeAnimeGenres(sample: List<TitleItem>) {
         if (sample.isEmpty()) return
         viewModelScope.launch {
+            val gate = Semaphore(5)
+            val found = sample.map { item ->
+                async {
+                    gate.withPermit {
+                        runCatching { app.cobe.genresOf(item.slug) }
+                            .getOrDefault(emptyList())
+                    }
+                }
+            }.awaitAll().flatten()
             val seen = LinkedHashMap<String, String>()
             _state.value.genreOptions.forEach { seen[it.id] = it.name }
             val before = seen.size
-            for (item in sample) {
-                val detail = runCatching { app.cobe.detail(item.slug) }.getOrNull()
-                    ?: continue
-                detail.genreLinks.forEach { (name, id) ->
-                    if (id != "24") seen.putIfAbsent(id, name)
-                }
+            found.forEach { opt ->
+                if (opt.id != "24") seen.putIfAbsent(opt.id, opt.name)
             }
             if (seen.size > before) {
-                _state.update {
-                    it.copy(
-                        genreOptions = seen.map { (id, name) -> FilterOption(id, name) }
-                    )
+                val merged = seen.map { (id, name) -> FilterOption(id, name) }
+                _state.update { it.copy(genreOptions = merged) }
+                runCatching {
+                    app.settings.setAnimeGenreCache(merged.map { it.id to it.name })
                 }
             }
         }

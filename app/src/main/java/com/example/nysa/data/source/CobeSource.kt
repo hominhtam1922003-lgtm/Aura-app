@@ -126,12 +126,15 @@ class CobeSource(private val settings: SettingsStore? = null) {
     /**
      * GET against the API with ONE self-heal attempt: if the call fails
      * outright (host rotated => DNS/404 storm), rediscover the host from
-     * the site's JS bundles, persist it, and retry once.
+     * the site's JS bundles, persist it, and retry once. Returns the raw
+     * body — endpoints that answer with a bare array (episodes) or any
+     * non-object payload go through here too (1.0.4; loadServers used to
+     * call httpGet directly and missed the self-heal entirely).
      */
-    private suspend fun apiGet(path: String): JSONObject {
+    private suspend fun apiGetRaw(path: String): String {
         ensureBase()
         try {
-            return JSONObject(httpGet(apiBase + path))
+            return httpGet(apiBase + path)
         } catch (e: Exception) {
             val fresh = rediscoverApiBase()
             if (fresh != null && fresh != apiBase) {
@@ -140,11 +143,13 @@ class CobeSource(private val settings: SettingsStore? = null) {
                     settings?.setCobeApiHost(fresh)
                 } catch (ignored: Exception) {
                 }
-                return JSONObject(httpGet(apiBase + path))
+                return httpGet(apiBase + path)
             }
             throw e
         }
     }
+
+    private suspend fun apiGet(path: String): JSONObject = JSONObject(apiGetRaw(path))
 
     private val hostRegex = Regex("""https://[a-z0-9]+\.darkbytes\.xyz""")
 
@@ -481,6 +486,26 @@ class CobeSource(private val settings: SettingsStore? = null) {
     }
 
     /**
+     * ONLY the genre list of one title (1.0.4): reads the by-slug
+     * record's categories WITHOUT loading episodes/servers — the cheap
+     * call the Anime genre probe fans out over its sample (the old
+     * probe paid a full detail() load per title).
+     */
+    suspend fun genresOf(slug: String): List<FilterOption> {
+        val json = apiGet("/movies/by-slug/$slug")
+        val m = json.optJSONObject("movie") ?: return emptyList()
+        val cats = m.optJSONArray("categories") ?: return emptyList()
+        val out = mutableListOf<FilterOption>()
+        for (i in 0 until cats.length()) {
+            val c = cats.optJSONObject(i) ?: continue
+            val name = c.optString("name")
+            if (name.isBlank()) continue
+            out += FilterOption(c.optInt("id").toString(), name)
+        }
+        return out
+    }
+
+    /**
      * Episodes come as ONE flat array (episode × server). Group by the
      * source's server label; normalize only the langKey (for the
      * version-priority order) — the displayed name stays verbatim.
@@ -488,7 +513,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * "Thuyết Minh" is the stale feed), then by episode count.
      */
     private suspend fun loadServers(movieSlug: String, movieId: Long): List<ServerGroup> {
-        val body = httpGet("$apiBase/episodes/by-idMovie/$movieId")
+        val body = apiGetRaw("/episodes/by-idMovie/$movieId")
         val arr = JSONArray(body)
         val byServer = linkedMapOf<String, MutableList<EpisodeItem>>()
         for (i in 0 until arr.length()) {

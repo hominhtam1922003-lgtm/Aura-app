@@ -27,7 +27,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -122,7 +125,8 @@ fun DetailScreen(
                             titleName = dItem.name,
                             widthDp = 400.dp,
                             heightDp = 230.dp,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            fallbackUrl = dItem.posterUrl
                         )
                         Box(
                             modifier = Modifier.fillMaxSize().background(
@@ -164,7 +168,8 @@ fun DetailScreen(
                                     titleName = dItem.name,
                                     widthDp = 104.dp,
                                     heightDp = 156.dp,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    fallbackUrl = dItem.thumbUrl
                                 )
                             }
                             Spacer(Modifier.width(14.dp))
@@ -309,6 +314,8 @@ fun DetailScreen(
                             if (server != null) {
                                 EpisodeGrid(
                                     episodes = server.episodes,
+                                    rangeKey = "${dItem.id}|${server.name}",
+                                    initialEpisodeNumber = state.userState?.lastUnitNumber ?: 0f,
                                     onPlay = { ep -> onPlay(dItem, ep, server) }
                                 )
                             }
@@ -383,10 +390,50 @@ private fun ServerRow(
 @Composable
 private fun EpisodeGrid(
     episodes: List<com.example.nysa.data.model.EpisodeItem>,
+    rangeKey: String,
+    initialEpisodeNumber: Float,
     onPlay: (com.example.nysa.data.model.EpisodeItem) -> Unit
 ) {
-    val rows = episodes.chunked(6)
+    // 1.0.4: past 60 episodes the grid gets range chips (100 episodes
+    // per range, in list order) and only the selected range is
+    // composed — a 1.000+ episode series used to build every button
+    // at once inside the scrolling Column and jank the whole page.
+    // At 60 or fewer the behaviour is exactly the old full grid.
+    val ranged = episodes.size > 60
+    val ranges = remember(episodes) {
+        if (ranged) episodes.chunked(100) else listOf(episodes)
+    }
+    var selectedRange by rememberSaveable(rangeKey) {
+        mutableIntStateOf(
+            if (ranged && initialEpisodeNumber > 0f) {
+                val idx = episodes.indexOfFirst { it.number >= initialEpisodeNumber }
+                if (idx >= 0) (idx / 100).coerceIn(0, ranges.size - 1) else 0
+            } else {
+                0
+            }
+        )
+    }
+    val shown = ranges.getOrElse(selectedRange) { ranges.first() }
+    val rows = shown.chunked(6)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (ranged) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(ranges.indices.toList()) { r ->
+                    val first = ranges[r].first()
+                    val last = ranges[r].last()
+                    val label = if (first.number > 0f || last.number > 0f) {
+                        "Tập ${fmtNum(first.number)}–${fmtNum(last.number)}"
+                    } else {
+                        "Tập ${r * 100 + 1}–${r * 100 + ranges[r].size}"
+                    }
+                    GlassChip(
+                        label = label,
+                        selected = r == selectedRange,
+                        onClick = { selectedRange = r }
+                    )
+                }
+            }
+        }
         rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { ep ->

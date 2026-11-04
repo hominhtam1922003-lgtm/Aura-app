@@ -18,6 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -327,6 +330,12 @@ fun GlassChip(
  * cell), and any failure (dead source art, blank URL) falls back to a
  * drawn genre poster — a cell is never empty (verdict 1.3.14: posters
  * vanished wholesale on the device).
+ *
+ * 1.0.4: two-stage art — when the primary URL fails and a DISTINCT
+ * [fallbackUrl] exists (callers pass the title's other art, poster ↔
+ * thumbnail), that is tried before giving up to the letter poster.
+ * Source art dies one file at a time; the other orientation usually
+ * still lives.
  */
 @Composable
 fun PosterImage(
@@ -335,26 +344,39 @@ fun PosterImage(
     titleName: String,
     widthDp: Dp,
     heightDp: Dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    fallbackUrl: String = ""
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val wPx = with(density) { widthDp.roundToPx() }
     val hPx = with(density) { heightDp.roundToPx() }
-    if (url.isBlank()) {
+    val hasFallback = fallbackUrl.isNotBlank() && fallbackUrl != url
+    var stage by remember(url, fallbackUrl) {
+        mutableIntStateOf(if (url.isBlank() && hasFallback) 1 else 0)
+    }
+    val current = if (stage == 0) url else fallbackUrl
+    if (current.isBlank()) {
         LetterPoster(genreLabel, titleName, modifier)
         return
     }
     SubcomposeAsyncImage(
         model = ImageRequest.Builder(context)
-            .data(url)
+            .data(current)
             .size(wPx, hPx)
             .build(),
         contentDescription = titleName,
         contentScale = ContentScale.Crop,
         modifier = modifier,
         loading = { LetterPoster(genreLabel, titleName, Modifier.fillMaxSize()) },
-        error = { LetterPoster(genreLabel, titleName, Modifier.fillMaxSize()) }
+        error = {
+            if (stage == 0 && hasFallback) {
+                // Advance to the fallback art; the state change
+                // recomposes with the new URL and Coil retries there.
+                stage = 1
+            }
+            LetterPoster(genreLabel, titleName, Modifier.fillMaxSize())
+        }
     )
 }
 

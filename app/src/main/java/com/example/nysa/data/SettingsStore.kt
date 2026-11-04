@@ -157,6 +157,28 @@ class SettingsStore(context: Context) {
         store.edit { it[COBE_API_HOST] = host }
     }
 
+    /**
+     * Anime genre facets probed from real by-slug records (1.0.4),
+     * stored as "id\tname" lines joined by "\n" — the Anime filter
+     * restores them at startup instead of re-probing on every cold
+     * start. Same line-blob style as the worker stamps above.
+     */
+    val animeGenreCache: Flow<List<Pair<String, String>>> = store.data.map { p ->
+        (p[ANIME_GENRE_CACHE] ?: "").split("\n")
+            .mapNotNull { line ->
+                val idx = line.indexOf('\t')
+                if (idx <= 0) null
+                else line.substring(0, idx) to line.substring(idx + 1)
+            }
+            .filter { it.second.isNotBlank() }
+    }
+
+    suspend fun setAnimeGenreCache(list: List<Pair<String, String>>) {
+        store.edit { p ->
+            p[ANIME_GENRE_CACHE] = list.joinToString("\n") { (id, name) -> "$id\t$name" }
+        }
+    }
+
     companion object {
         val QUALITY = stringPreferencesKey("quality_default")
         val VERSION_PRIORITY = stringPreferencesKey("version_priority")
@@ -175,5 +197,6 @@ class SettingsStore(context: Context) {
         val WORKER_STAMPS = stringPreferencesKey("worker_check_stamps")
         val INTRO_ENDS = stringPreferencesKey("intro_ends")
         val COBE_API_HOST = stringPreferencesKey("cobe_api_host")
+        val ANIME_GENRE_CACHE = stringPreferencesKey("anime_genre_cache")
     }
 }
