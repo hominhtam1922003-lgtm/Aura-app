@@ -37,36 +37,22 @@ import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.example.nysa.ui.theme.LocalGlassEnabled
-import com.example.nysa.ui.theme.LocalHazeState
 import com.example.nysa.ui.theme.NySaSurfacePlain
 import com.example.nysa.ui.theme.NySaTextMuted
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeChild
 
 /**
  * The Liquid Glass system (rebuilt for 1.0.1 after the on-device
- * verdict "mất liquid glass, nút trắng đục").
+ * verdict "mất liquid glass, nút trắng đục"; Haze backdrop blur was
+ * tried in 1.0.1 and REMOVED in 1.0.2 — 1.0.1 crashed on launch on
+ * the user's Xiaomi, so the glass here is layered tint + specular
+ * rim + top sheen only, no backdrop-blur library).
  *
- * Two layers, because one size does not fit all surfaces:
- *
- * 1. REAL backdrop blur (Haze) for the big floating surfaces — the
- *    tab bar, the new-episode banner, the settings cards — via
- *    [LiquidGlassBox]. The blurred layer is a full-size child clipped
- *    by its parent, so corners are always exact. Blur exists on
- *    API 31+; below that Haze serves the fallback tint and the rim /
- *    sheen layers below still carry the glass read.
- * 2. Layered tint + specular rim + top sheen ([glassSurface]) for
- *    everything in layout flow (chips, list panels, sheets) — the
- *    layers are noticeably brighter than the 1.0.0 pass, whose 3–10%
- *    white over pure black read as flat black on the device.
- *
- * The player cannot use backdrop blur (its video is a SurfaceView —
- * Compose cannot sample its pixels), so its controls use
- * [playerGlassSurface]: the same rim + sheen over a translucent
- * BLACK tint, which reads as dark glass over bright video and kills
- * the old solid-white fills. Glass OFF collapses every surface to
- * the plain theme's flat panels, as approved.
+ * The layers are noticeably brighter than the 1.0.0 pass, whose
+ * 3–10% white over pure black read as flat black on the device.
+ * The player uses [playerGlassSurface]: the same rim + sheen over
+ * a translucent BLACK tint, which reads as dark glass over bright
+ * video and kills the old solid-white fills. Glass OFF collapses
+ * every surface to the plain theme's flat panels, as approved.
  */
 fun Modifier.glassSurface(shape: Shape, glass: Boolean): Modifier = this
     .clip(shape)
@@ -150,16 +136,13 @@ fun Modifier.playerGlassSurface(shape: Shape, glass: Boolean): Modifier = this
     )
 
 /**
- * A glass surface with REAL backdrop blur when a [HazeState] is in
- * scope (shell surfaces, settings cards). The blur layer is clipped
- * by the parent's shape, then the tint/rim/sheen layer, then content.
+ * A glass surface (tab bar, banner, settings cards): the tint / rim
+ * / sheen layers clipped to [shape], then the content on top.
  */
 @Composable
 fun LiquidGlassBox(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(22.dp),
-    hazeState: HazeState? = LocalHazeState.current,
-    blurRadius: Dp = 26.dp,
     content: @Composable () -> Unit
 ) {
     val glass = LocalGlassEnabled.current
@@ -168,16 +151,6 @@ fun LiquidGlassBox(
         return
     }
     Box(modifier = modifier.clip(shape)) {
-        if (hazeState != null) {
-            Box(
-                modifier = Modifier.matchParentSize().hazeChild(hazeState) {
-                    this.blurRadius = blurRadius
-                    tints = listOf(HazeTint(Color.White.copy(alpha = 0.05f)))
-                    noiseFactor = 0.04f
-                    fallbackTint = HazeTint(Color(0xFF17171F).copy(alpha = 0.72f))
-                }
-            )
-        }
         Box(modifier = Modifier.matchParentSize().glassSurface(shape, true))
         content()
     }

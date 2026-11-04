@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -73,10 +72,7 @@ import com.example.nysa.ui.search.SearchScreen
 import com.example.nysa.ui.section.SectionScreen
 import com.example.nysa.ui.section.SectionViewModel
 import com.example.nysa.ui.theme.LocalGlassEnabled
-import com.example.nysa.ui.theme.LocalHazeState
 import com.example.nysa.ui.theme.NySaTheme
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import com.example.nysa.work.NewEpisodeWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -180,10 +176,6 @@ private fun NySaShell() {
     var detailItem by remember { mutableStateOf<TitleItem?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     val shellScope = rememberCoroutineScope()
-    // One backdrop-blur state for the whole tab shell: the tab content
-    // is the source; the tab bar, the banner and the settings cards
-    // are the children that blur it (1.0.1 glass rebuild).
-    val shellHaze = remember { HazeState() }
 
     // Tab ViewModels live in the ACTIVITY's ViewModelStore — they
     // survive tab switches untouched, which (with the
@@ -293,26 +285,18 @@ private fun NySaShell() {
 
     BackHandler(enabled = selected != 0) { selected = 0 }
 
-    CompositionLocalProvider(LocalHazeState provides shellHaze) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // The tab content is the backdrop source the glass blurs.
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .then(if (glass) Modifier.hazeSource(shellHaze) else Modifier)
-        ) {
-            TabContent(
-                selected = selected,
-                homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
-                onOpenTitle = openTitle,
-                onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
-                onResume = resumeByItem,
-                onGoSearch = { searchOpen = true }
-            )
-        }
+        TabContent(
+            selected = selected,
+            homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
+            onOpenTitle = openTitle,
+            onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
+            onResume = resumeByItem,
+            onGoSearch = { searchOpen = true }
+        )
 
-        // Floating glass tab pill (approved design): REAL backdrop
-        // blur since 1.0.1. In plain mode it is the same pill in flat
-        // dark gray — layout never changes.
+        // Floating glass tab pill (approved design). In plain mode it
+        // is the same pill in flat dark gray — layout never changes.
         LiquidGlassBox(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -382,7 +366,6 @@ private fun NySaShell() {
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
-    }
     }
 }
 

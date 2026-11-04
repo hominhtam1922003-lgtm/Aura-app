@@ -7,21 +7,6 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
-// Haze 1.5.4's runtime graph requires androidx.activity 1.10.1, whose
-// AAR metadata demands compileSdk 35 — this project is on AGP 8.5.2 /
-// compileSdk 34 (two 1.0.1 CI runs failed checkReleaseAarMetadata on
-// exactly this). Force activity back to the last 34-compatible line;
-// Haze's blur path only touches stable activity APIs.
-configurations.all {
-    resolutionStrategy {
-        force(
-            "androidx.activity:activity:1.9.3",
-            "androidx.activity:activity-ktx:1.9.3",
-            "androidx.activity:activity-compose:1.9.3"
-        )
-    }
-}
-
 android {
     namespace = "com.example.nysa"
     compileSdk = 34
@@ -30,8 +15,8 @@ android {
         applicationId = "com.example.nysa"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     signingConfigs {
@@ -103,11 +88,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.compose.material3:material3")
-    // Real backdrop blur for the Liquid Glass surfaces (tab bar, cards)
-    implementation("dev.chrisbanes.haze:haze:1.5.4")
-    // (activity pinning lives in the resolutionStrategy below the
-    // android block — plain constraints lost to Haze's hard 1.10.1
-    // requirement in CI, so the pin has to be a force.)
+    // NOTE: Haze (backdrop blur) was tried in 1.0.1 and REMOVED in
+    // 1.0.2 — 1.0.1 crashed on launch on the user's Xiaomi. Do not
+    // re-add it without an on-device test first.
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
