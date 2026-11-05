@@ -168,6 +168,20 @@ class SettingsStore(context: Context) {
     }
 
     /**
+     * Last COBE site (watch-page) origin that actually answered,
+     * mirroring [cobeApiHost]: the site rotated its web domain
+     * (.fun → .mom, 2026-11-05) and the watch pages live on the
+     * site origin, not the API host — CobeSource re-learns the
+     * origin from redirect targets and stores it here. Empty =
+     * never learned; the source uses its seed default.
+     */
+    val cobeSiteHost: Flow<String> = store.data.map { p -> p[COBE_SITE_HOST] ?: "" }
+
+    suspend fun setCobeSiteHost(host: String) {
+        store.edit { it[COBE_SITE_HOST] = host }
+    }
+
+    /**
      * Anime genre facets probed from real by-slug records (1.0.4),
      * stored as "id\tname" lines joined by "\n" — the Anime filter
      * restores them at startup instead of re-probing on every cold
@@ -245,6 +259,7 @@ class SettingsStore(context: Context) {
         val WORKER_STAMPS = stringPreferencesKey("worker_check_stamps")
         val INTRO_ENDS = stringPreferencesKey("intro_ends")
         val COBE_API_HOST = stringPreferencesKey("cobe_api_host")
+        val COBE_SITE_HOST = stringPreferencesKey("cobe_site_host")
         val ANIME_GENRE_CACHE = stringPreferencesKey("anime_genre_cache")
         val UPDATE_AVAILABLE_VERSION = stringPreferencesKey("update_available_version")
         val UPDATE_AVAILABLE_URL = stringPreferencesKey("update_available_url")

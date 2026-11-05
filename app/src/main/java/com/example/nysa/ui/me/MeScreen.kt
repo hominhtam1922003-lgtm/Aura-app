@@ -254,12 +254,17 @@ fun MeScreen() {
                             )
                         )
                         Spacer(Modifier.size(9.dp))
+                        // Host shown is the origin the app is REALLY
+                        // using (the web domain rotates — .fun → .mom),
+                        // never a hardcoded name that could lie.
+                        val siteHost = app.cobe.currentSiteBase()
+                            .removePrefix("https://")
                         Text(
                             when (healthOk) {
-                                true -> "cobephim.fun — đang sống" +
+                                true -> "$siteHost — đang sống" +
                                     (if (healthMs >= 0) " · ${healthMs} ms" else "")
-                                false -> "cobephim.fun — không phản hồi"
-                                null -> "cobephim.fun — đang kiểm tra…"
+                                false -> "$siteHost — không phản hồi"
+                                null -> "$siteHost — đang kiểm tra…"
                             },
                             color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold
                         )

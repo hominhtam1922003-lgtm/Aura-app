@@ -30,7 +30,9 @@ data class Shelf(val name: String, val items: List<TitleItem>)
 data class FilterOption(val id: String, val name: String)
 
 /**
- * The ONE source of NySa: cobephim.fun (user order 2026-11-04).
+ * The ONE source of NySa: the COBE site (user order 2026-11-04).
+ * Its web domain rotates (cobephim.fun 301'd to cobephim.mom,
+ * measured 2026-11-05) — see SITE_SEEDS / siteBase below.
  *
  * Measured live 2026-11-04 (see ~/workspace/nysa/research/COBE-API.md):
  * the web is a Next.js shell; the data lives on a public JSON API at
@@ -50,7 +52,19 @@ class CobeSource(private val settings: SettingsStore? = null) {
 
     companion object {
         const val SOURCE_ID = "cobe"
-        const val SITE = "https://cobephim.fun"
+
+        /**
+         * Seed watch-page origins, newest first. The site's web
+         * domain ROTATES (.fun 301'd to .mom on 2026-11-05, and on
+         * the user's network .fun is refused outright) while the API
+         * host lives elsewhere — so the live origin is learned at
+         * runtime (see siteBase) and the seeds are only starting
+         * points / fallback candidates for resolvePlay.
+         */
+        val SITE_SEEDS = listOf("https://cobephim.mom", "https://cobephim.fun")
+
+        /** Built-in default watch origin = the newest known seed. */
+        const val SITE = "https://cobephim.mom"
         const val DEFAULT_API_BASE =
             "https://egluy2hhb21vaw5ndw9pbmhl.darkbytes.xyz/api/v1"
         const val GENRE_ANIME_ID = 24
@@ -73,8 +87,8 @@ class CobeSource(private val settings: SettingsStore? = null) {
             return rest.substring(0, idx) to epId
         }
 
-        fun watchPageUrl(movieSlug: String, episodeId: Long): String =
-            "$SITE/phim/$movieSlug/tap-$episodeId"
+        fun watchPageUrl(base: String, movieSlug: String, episodeId: Long): String =
+            "$base/phim/$movieSlug/tap-$episodeId"
     }
 
     private val client = OkHttpClient.Builder()
@@ -89,6 +103,13 @@ class CobeSource(private val settings: SettingsStore? = null) {
     @Volatile
     private var baseLoaded = false
 
+    /** Live watch-page origin; learned from redirects, seeded by [SITE]. */
+    @Volatile
+    private var siteBase: String = SITE
+
+    @Volatile
+    private var siteLoaded = false
+
     /** One page of a listing; [hasMore] follows the measured rule: a full page means another exists. */
     data class Page(val items: List<TitleItem>, val hasMore: Boolean)
 
@@ -96,18 +117,30 @@ class CobeSource(private val settings: SettingsStore? = null) {
     // HTTP plumbing (all blocking work on IO — performance gate)
     // ------------------------------------------------------------------
 
-    private suspend fun httpGet(url: String): String = withContext(Dispatchers.IO) {
-        val req = Request.Builder()
-            .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) NySa/1.0")
-            .build()
-        client.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) {
-                throw IllegalStateException("HTTP ${resp.code} từ nguồn")
+    private suspend fun httpGet(url: String): String = httpGetFinal(url).first
+
+    /**
+     * GET returning the body AND the final URL after redirects.
+     * The watch-page origin is learned from where a request
+     * actually LANDS: a 301 from an old domain teaches the new
+     * one (that is how the .fun → .mom rotation self-heals on
+     * networks where the old domain still answers).
+     */
+    private suspend fun httpGetFinal(url: String): Pair<String, String> =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) NySa/1.0")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    throw IllegalStateException("HTTP ${resp.code} từ nguồn")
+                }
+                val body = resp.body?.string()
+                    ?: throw IllegalStateException("Nguồn trả rỗng")
+                body to resp.request.url.toString()
             }
-            resp.body?.string() ?: throw IllegalStateException("Nguồn trả rỗng")
         }
-    }
 
     /** Load the persisted API host once; keeps [apiBase] current across host rotations. */
     private suspend fun ensureBase() {
@@ -122,6 +155,22 @@ class CobeSource(private val settings: SettingsStore? = null) {
             apiBase = saved.trimEnd('/')
         }
     }
+
+    /** Load the persisted watch-page origin once (mirror of [ensureBase]). */
+    private suspend fun ensureSite() {
+        if (siteLoaded) return
+        siteLoaded = true
+        val saved = try {
+            settings?.cobeSiteHost?.first()
+        } catch (e: Exception) {
+            null
+        }
+        if (!saved.isNullOrBlank()) {
+            siteBase = saved.trimEnd('/')
+        }
+    }
+
+    fun currentSiteBase(): String = siteBase
 
     /**
      * GET against the API with ONE self-heal attempt: if the call fails
@@ -155,13 +204,14 @@ class CobeSource(private val settings: SettingsStore? = null) {
 
     /** Best-effort host rediscovery from the site's own JS (measured: chunks carry the API host). */
     private suspend fun rediscoverApiBase(): String? = try {
-        val home = httpGet("$SITE/")
+        ensureSite()
+        val home = httpGet("$siteBase/")
         val chunks = Regex("src=\"(/_next/static/chunks/[^\"]+\\.js)\"")
             .findAll(home).map { it.groupValues[1] }.take(14).toList()
         var found: String? = null
         for (chunk in chunks) {
             if (found != null) break
-            val js = runCatching { httpGet(SITE + chunk) }.getOrNull() ?: continue
+            val js = runCatching { httpGet(siteBase + chunk) }.getOrNull() ?: continue
             found = hostRegex.find(js)?.value
         }
         found?.let { "$it/api/v1" }
@@ -525,6 +575,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * "Thuyết Minh" is the stale feed), then by episode count.
      */
     private suspend fun loadServers(movieSlug: String, movieId: Long): List<ServerGroup> {
+        ensureSite()
         val body = apiGetRaw("/episodes/by-idMovie/$movieId")
         val arr = JSONArray(body)
         val byServer = linkedMapOf<String, MutableList<EpisodeItem>>()
@@ -542,7 +593,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
                 else "Tập $name",
                 number = number,
                 slug = locator(movieSlug, epId),
-                embedUrl = watchPageUrl(movieSlug, epId)
+                embedUrl = watchPageUrl(siteBase, movieSlug, epId)
             )
             byServer.getOrPut(server) { mutableListOf() } += ep
         }
@@ -589,16 +640,49 @@ class CobeSource(private val settings: SettingsStore? = null) {
     suspend fun resolvePlay(locatorSlug: String): CobePlay {
         val (movieSlug, episodeId) = parseLocator(locatorSlug)
             ?: throw IllegalStateException("Định danh tập không hợp lệ")
-        val watchUrl = watchPageUrl(movieSlug, episodeId)
-        val html = httpGet(watchUrl)
+        ensureSite()
+        // The play link lives ONLY on the watch page, and the web
+        // domain rotates (.fun → .mom): try the learned origin
+        // first, then every seed. The first page that loads wins;
+        // its FINAL url (after redirects) both becomes the fallback
+        // watch url below and teaches the live origin — scheme +
+        // host are adopted as the new siteBase and persisted, so
+        // the next rotation self-heals wherever the old domain
+        // still answers with a redirect.
+        val candidates = (listOf(siteBase) + SITE_SEEDS).distinct()
+        var watchUrl = watchPageUrl(siteBase, movieSlug, episodeId)
+        var html: String? = null
+        var lastError: Exception? = null
+        for (base in candidates) {
+            try {
+                val (body, finalUrl) =
+                    httpGetFinal(watchPageUrl(base, movieSlug, episodeId))
+                html = body
+                watchUrl = finalUrl
+                val origin = Regex("""^https?://[^/]+""").find(finalUrl)?.value
+                if (origin != null && origin != siteBase) {
+                    siteBase = origin
+                    try {
+                        settings?.setCobeSiteHost(origin)
+                    } catch (ignored: Exception) {
+                    }
+                }
+                break
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        val page = html
+            ?: throw (lastError
+                ?: IllegalStateException("Không tải được trang xem từ nguồn"))
         var type: String? = null
         var link: String? = null
-        val m1 = episodeJsonRegex.find(html)
+        val m1 = episodeJsonRegex.find(page)
         if (m1 != null) {
             type = m1.groupValues[1]
             link = m1.groupValues[2]
         } else {
-            val m2 = episodeJsonRegexAlt.find(html)
+            val m2 = episodeJsonRegexAlt.find(page)
             if (m2 != null) {
                 link = m2.groupValues[1]
                 type = m2.groupValues[2]

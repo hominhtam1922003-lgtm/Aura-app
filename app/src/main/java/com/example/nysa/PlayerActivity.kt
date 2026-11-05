@@ -375,7 +375,7 @@ private fun PlayerScreen(
         val upstreamFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 13) NySa/1.0")
             .setAllowCrossProtocolRedirects(true)
-            .setDefaultRequestProperties(mapOf("Referer" to "https://cobephim.fun/"))
+            .setDefaultRequestProperties(mapOf("Referer" to app.cobe.currentSiteBase() + "/"))
         // V2 (A6): stream through the shared write-through cache — the
         // exact source bytes land on disk as they play (no quality
         // downgrade anywhere), and the next-episode prefetcher warms
