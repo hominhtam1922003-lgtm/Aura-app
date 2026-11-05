@@ -639,7 +639,9 @@ private fun PlayerScreen(
                             exo.seekTo(exo.currentPosition + 10_000)
                             seekFlash = "+10 giây"
                         }
-                        controlsVisible = true
+                        // User order 2026-11-06: a seek double-tap
+                        // must NOT light up the controls overlay —
+                        // only a plain single tap toggles it.
                     }
                 )
             }
