@@ -64,6 +64,11 @@ import com.example.nysa.data.versionPriorityOrder
 import com.example.nysa.ui.components.LiquidGlassBox
 import com.example.nysa.ui.components.underlayBlur
 import com.example.nysa.ui.detail.DetailScreen
+import com.example.nysa.ui.glass.BackdropState
+import com.example.nysa.ui.glass.GlassTier
+import com.example.nysa.ui.glass.backdropRecorder
+import com.example.nysa.ui.glass.currentGlassTier
+import com.example.nysa.ui.glass.rememberBackdropState
 import com.example.nysa.ui.home.HomeScreen
 import com.example.nysa.ui.home.HomeViewModel
 import com.example.nysa.ui.library.LibraryScreen
@@ -177,6 +182,14 @@ private fun NySaShell() {
     var searchOpen by remember { mutableStateOf(false) }
     val shellScope = rememberCoroutineScope()
 
+    // Real glass (1.0.5-glass): the tab content is recorded into one
+    // shared backdrop layer that the floating tab bar + banner sample.
+    // Active ONLY while the glass toggle is on AND the device reaches
+    // the BLUR tier (API 31+); glass off / older devices keep the
+    // exact previous behaviour — no recording, no effects.
+    val backdropState = rememberBackdropState()
+    val useRealGlass = glass && currentGlassTier() != GlassTier.STATIC
+
     // Tab ViewModels live in the ACTIVITY's ViewModelStore — they
     // survive tab switches untouched, which (with the
     // SaveableStateHolder below restoring scroll) is the whole
@@ -286,22 +299,34 @@ private fun NySaShell() {
     BackHandler(enabled = selected != 0) { selected = 0 }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        TabContent(
-            selected = selected,
-            homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
-            onOpenTitle = openTitle,
-            onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
-            onResume = resumeByItem,
-            onGoSearch = { searchOpen = true }
-        )
+        // The recorded subtree: tab content ONLY. The glass surfaces
+        // below are siblings OUTSIDE it — a surface must never sample
+        // a layer that contains itself.
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .then(if (useRealGlass) Modifier.backdropRecorder(backdropState) else Modifier)
+        ) {
+            TabContent(
+                selected = selected,
+                homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
+                onOpenTitle = openTitle,
+                onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
+                onResume = resumeByItem,
+                onGoSearch = { searchOpen = true }
+            )
+        }
 
         // Floating glass tab pill (approved design). In plain mode it
         // is the same pill in flat dark gray — layout never changes.
+        // With a backdrop it is REAL glass: the content scrolling
+        // underneath blurs through it (API 31+, refraction on 33+).
         LiquidGlassBox(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 18.dp, vertical = 14.dp),
-            shape = RoundedCornerShape(50)
+            shape = RoundedCornerShape(50),
+            backdrop = if (useRealGlass) backdropState else null,
+            backdropSlot = "tabbar"
         ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -363,7 +388,8 @@ private fun NySaShell() {
                     }
                 },
                 onDismiss = { app.newEpisodeEvents.value = emptyList() },
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier.align(Alignment.TopCenter),
+                backdrop = if (useRealGlass) backdropState else null
             )
         }
     }
@@ -410,7 +436,8 @@ private fun LiquidNewEpisodeBanner(
     names: List<String>,
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    backdrop: BackdropState? = null
 ) {
     val glass = LocalGlassEnabled.current
     val drop = remember { Animatable(-1.15f) }
@@ -439,7 +466,9 @@ private fun LiquidNewEpisodeBanner(
             .clickable(onClick = onOpen)
     ) {
       LiquidGlassBox(
-          shape = RoundedCornerShape(26.dp, 26.dp, bottomRadius, bottomRadius)
+          shape = RoundedCornerShape(26.dp, 26.dp, bottomRadius, bottomRadius),
+          backdrop = backdrop,
+          backdropSlot = "banner"
       ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),

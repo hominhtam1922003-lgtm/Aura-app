@@ -92,7 +92,11 @@ fun DetailScreen(
 
     Box(
         modifier = Modifier.fillMaxSize()
-            .background(Color(0xE607070B))
+            // 1.0.5-glass: scrim thinned from 0xE6 (~90%) to 0xBF
+            // (~75%) so the REAL blurred shell underlay (MainActivity's
+            // underlayBlur) actually reads through as frosted depth —
+            // still dark enough that white text over it stays legible.
+            .background(Color(0xBF07070B))
     ) {
         when {
             state.loading && state.detail == null -> {

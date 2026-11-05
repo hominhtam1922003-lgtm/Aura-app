@@ -57,7 +57,6 @@ import com.example.nysa.data.model.ServerGroup
 import com.example.nysa.player.PlayerUiState
 import com.example.nysa.ui.components.FilterChips
 import com.example.nysa.ui.components.GlassSwitch
-import com.example.nysa.ui.components.glassSurface
 import com.example.nysa.ui.components.playerGlassSurface
 import com.example.nysa.ui.theme.LocalGlassEnabled
 import com.example.nysa.ui.detail.fmtNum
@@ -530,7 +529,11 @@ internal fun PlayerSheet(onDismiss: () -> Unit, content: @Composable () -> Unit)
             modifier = Modifier.align(Alignment.CenterEnd)
                 .fillMaxHeight()
                 .width(330.dp)
-                .glassSurface(
+                // Dark player glass, NOT the shell's white-tint
+                // glassSurface: the sheet floats over video, so it
+                // follows the player surface family (1.0.5-glass —
+                // keeps later shell-glass changes from leaking in).
+                .playerGlassSurface(
                     RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
                     glass
                 )

@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.example.nysa.ui.glass.BackdropState
+import com.example.nysa.ui.glass.realGlassBackdrop
 import com.example.nysa.ui.theme.LocalGlassEnabled
 import com.example.nysa.ui.theme.NySaSurfacePlain
 import com.example.nysa.ui.theme.NySaTextMuted
@@ -56,6 +58,12 @@ import com.example.nysa.ui.theme.NySaTextMuted
  * a translucent BLACK tint, which reads as dark glass over bright
  * video and kills the old solid-white fills. Glass OFF collapses
  * every surface to the plain theme's flat panels, as approved.
+ *
+ * 1.0.5-glass adds REAL glass on top of this system for the two
+ * floating shell surfaces (tab bar + new-episode banner): see
+ * ui/glass/Backdrop.kt — the recorded tab content is drawn under
+ * the tint layers above, blurred with stock RenderEffect (and
+ * AGSL-refracted on API 33+). Still no backdrop-blur library.
  */
 fun Modifier.glassSurface(shape: Shape, glass: Boolean): Modifier = this
     .clip(shape)
@@ -141,11 +149,21 @@ fun Modifier.playerGlassSurface(shape: Shape, glass: Boolean): Modifier = this
 /**
  * A glass surface (tab bar, banner, settings cards): the tint / rim
  * / sheen layers clipped to [shape], then the content on top.
+ *
+ * 1.0.5-glass: when the caller supplies a [backdrop] (the shared
+ * recorded tab content) the surface becomes REAL glass — the slice
+ * of content underneath is drawn blurred (+ refracted on API 33+)
+ * below the tint layers. Callers that pass no backdrop (settings
+ * cards — they sit inside scrolling content and would sample the
+ * layer containing themselves) keep the tint-only rendering.
+ * [backdropSlot] identifies the surface to the shader cache.
  */
 @Composable
 fun LiquidGlassBox(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(22.dp),
+    backdrop: BackdropState? = null,
+    backdropSlot: String = "",
     content: @Composable () -> Unit
 ) {
     val glass = LocalGlassEnabled.current
@@ -154,7 +172,17 @@ fun LiquidGlassBox(
         return
     }
     Box(modifier = modifier.clip(shape)) {
-        Box(modifier = Modifier.matchParentSize().glassSurface(shape, true))
+        Box(
+            modifier = Modifier.matchParentSize()
+                .then(
+                    if (backdrop != null) {
+                        Modifier.realGlassBackdrop(backdrop, shape, backdropSlot)
+                    } else {
+                        Modifier
+                    }
+                )
+                .glassSurface(shape, true)
+        )
         content()
     }
 }
