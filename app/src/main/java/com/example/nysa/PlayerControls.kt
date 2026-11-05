@@ -31,6 +31,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -100,24 +101,33 @@ private fun qLabel(height: Int): String = when {
 private fun BufferedSeekBar(
     fraction: Float,
     bufferedFraction: Float,
+    durationMs: Long,
     onScrub: (Float) -> Unit,
     onScrubFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val glass = LocalGlassEnabled.current
+    // Fraction under the finger while scrubbing; null at rest. Drives
+    // the time bubble below.
+    var scrubFraction by remember { mutableStateOf<Float?>(null) }
     BoxWithConstraints(
         modifier = modifier
             .height(28.dp)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { offset ->
-                        onScrub((offset.x / size.width).coerceIn(0f, 1f))
+                        val f = (offset.x / size.width).coerceIn(0f, 1f)
+                        scrubFraction = f
+                        onScrub(f)
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        onScrub((change.position.x / size.width).coerceIn(0f, 1f))
+                        val f = (change.position.x / size.width).coerceIn(0f, 1f)
+                        scrubFraction = f
+                        onScrub(f)
                     },
-                    onDragEnd = { onScrubFinished() },
-                    onDragCancel = { onScrubFinished() }
+                    onDragEnd = { scrubFraction = null; onScrubFinished() },
+                    onDragCancel = { scrubFraction = null; onScrubFinished() }
                 )
             }
     ) {
@@ -156,6 +166,31 @@ private fun BufferedSeekBar(
                 .align(Alignment.CenterStart)
                 .background(NySaViolet, CircleShape)
         )
+        // Scrub time bubble (user order 2026-11-06): while dragging,
+        // float the target time above the thumb so he can see exactly
+        // where he is scrubbing to.
+        scrubFraction?.let { f ->
+            if (durationMs > 0) {
+                val bubbleW = 64.dp
+                val thumbCenter = (maxWidth - 14.dp) * f + 7.dp
+                val bubbleX = (thumbCenter - bubbleW / 2).coerceIn(0.dp, maxWidth - bubbleW)
+                Box(
+                    modifier = Modifier
+                        .offset(x = bubbleX, y = (-18).dp)
+                        .width(bubbleW)
+                        .playerGlassSurface(RoundedCornerShape(50), glass)
+                        .padding(vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        fmtT((f * durationMs).toLong()),
+                        color = Color.White,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -342,6 +377,7 @@ internal fun PlayerControls(
             Text(fmtT(positionMs), color = Color.White, fontSize = 12.sp)
             BufferedSeekBar(
                 fraction = fraction,
+                durationMs = durationMs,
                 bufferedFraction = if (durationMs > 0) {
                     (bufferedMs.toFloat() / durationMs).coerceIn(0f, 1f)
                 } else {
