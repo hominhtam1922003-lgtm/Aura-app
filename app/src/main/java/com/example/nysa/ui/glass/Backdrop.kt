@@ -62,10 +62,16 @@ fun currentGlassTier(): GlassTier = when {
 }
 
 /** Scale of the offscreen layer a surface's backdrop slice is blurred in. */
-private const val BACKDROP_DOWNSCALE = 0.6f
+private const val BACKDROP_DOWNSCALE = 0.75f
 
-/** Backdrop blur radius, in downscaled effect-layer px (≈43 full-res px — a deep frost). */
-private const val BLUR_RADIUS_PX = 26f
+/**
+ * Backdrop blur radius, in downscaled effect-layer px (≈15 full-res
+ * px at the 0.75 scale). 1.0.5 used 26 (≈43 full-res px — a deep
+ * frost); that depth was the main cause of the on-device 1.0.5-glass
+ * verdict "có hiệu ứng nhưng ĐỤC NGẦU", so 1.0.6-glass cuts it to a
+ * clear-glass blur and raises the sample scale above.
+ */
+private const val BLUR_RADIUS_PX = 11f
 
 /** Shared per-screen backdrop: the recorded tab content + its last recorded size. */
 class BackdropState internal constructor(

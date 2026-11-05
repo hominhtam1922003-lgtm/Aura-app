@@ -411,12 +411,24 @@ class CobeSource(private val settings: SettingsStore? = null) {
     }
 
     suspend fun regions(): List<FilterOption> {
-        val json = apiGet("/regions?limit=100")
-        val arr = json.optJSONArray("data") ?: return emptyList()
+        // Paginated (1.0.6 fix): the table holds 140 regions but the
+        // API caps limit at 100/page (limit=200 returns empty), so the
+        // old single page silently dropped the last 40 — follow
+        // meta.totalPages (measured 2 on 2026-11-05) and merge the
+        // pages in order.
         val out = mutableListOf<FilterOption>()
-        for (i in 0 until arr.length()) {
-            val r = arr.optJSONObject(i) ?: continue
-            out += FilterOption(r.optInt("id").toString(), r.optString("name"))
+        var page = 1
+        var totalPages = 1
+        while (page <= totalPages) {
+            val json = apiGet("/regions?limit=100&page=$page")
+            val arr = json.optJSONArray("data") ?: break
+            for (i in 0 until arr.length()) {
+                val r = arr.optJSONObject(i) ?: continue
+                out += FilterOption(r.optInt("id").toString(), r.optString("name"))
+            }
+            totalPages = json.optJSONObject("meta")?.optInt("totalPages", 1) ?: 1
+            if (arr.length() == 0) break
+            page++
         }
         return out
     }

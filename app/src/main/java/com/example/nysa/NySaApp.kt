@@ -98,8 +98,16 @@ class NySaApp : Application(), ImageLoaderFactory {
                 "Tập mới",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply { description = "Báo khi bộ đang theo dõi có tập mới" }
+            // Separate channel (1.0.6): update announcements can be
+            // muted on their own without silencing episode alerts.
+            val updateChannel = NotificationChannel(
+                CHANNEL_APP_UPDATES,
+                "Cập nhật ứng dụng",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "Báo khi NySa có bản mới" }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
+            manager?.createNotificationChannel(updateChannel)
         }
     }
 
@@ -123,6 +131,7 @@ class NySaApp : Application(), ImageLoaderFactory {
 
     companion object {
         const val CHANNEL_NEW_EPISODES = "nysa_new_episodes"
+        const val CHANNEL_APP_UPDATES = "nysa_app_updates"
         const val WORK_EPISODE_CHECKS = "nysa_episode_checks"
     }
 

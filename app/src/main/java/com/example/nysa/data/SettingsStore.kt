@@ -30,6 +30,16 @@ data class AppSettings(
     val liquidGlass: Boolean = true
 )
 
+/**
+ * A newer release the background worker found on GitHub (1.0.6):
+ * drives both the system notification (worker) and the in-app update
+ * banner (shell). Empty version = nothing pending.
+ */
+data class AvailableUpdate(
+    val version: String = "",
+    val apkUrl: String = ""
+)
+
 class SettingsStore(context: Context) {
 
     private val store = context.applicationContext.dataStore
@@ -179,6 +189,44 @@ class SettingsStore(context: Context) {
         }
     }
 
+    /**
+     * App-update state (1.0.6): the newest release the background
+     * worker has seen, the version the user already got a system
+     * notification for (anti-spam — a version is only announced
+     * again when a NEWER one appears), and the version the user
+     * dismissed with "Để sau" on the in-app banner (that exact
+     * version stays quiet; a newer one announces again).
+     */
+    val availableUpdate: Flow<AvailableUpdate> = store.data.map { p ->
+        AvailableUpdate(
+            version = p[UPDATE_AVAILABLE_VERSION] ?: "",
+            apkUrl = p[UPDATE_AVAILABLE_URL] ?: ""
+        )
+    }
+
+    suspend fun setAvailableUpdate(version: String, apkUrl: String) {
+        store.edit { p ->
+            p[UPDATE_AVAILABLE_VERSION] = version
+            p[UPDATE_AVAILABLE_URL] = apkUrl
+        }
+    }
+
+    val updateNotifiedVersion: Flow<String> = store.data.map { p ->
+        p[UPDATE_NOTIFIED_VERSION] ?: ""
+    }
+
+    suspend fun setUpdateNotifiedVersion(version: String) {
+        store.edit { it[UPDATE_NOTIFIED_VERSION] = version }
+    }
+
+    val updateDismissedVersion: Flow<String> = store.data.map { p ->
+        p[UPDATE_DISMISSED_VERSION] ?: ""
+    }
+
+    suspend fun setUpdateDismissedVersion(version: String) {
+        store.edit { it[UPDATE_DISMISSED_VERSION] = version }
+    }
+
     companion object {
         val QUALITY = stringPreferencesKey("quality_default")
         val VERSION_PRIORITY = stringPreferencesKey("version_priority")
@@ -198,5 +246,9 @@ class SettingsStore(context: Context) {
         val INTRO_ENDS = stringPreferencesKey("intro_ends")
         val COBE_API_HOST = stringPreferencesKey("cobe_api_host")
         val ANIME_GENRE_CACHE = stringPreferencesKey("anime_genre_cache")
+        val UPDATE_AVAILABLE_VERSION = stringPreferencesKey("update_available_version")
+        val UPDATE_AVAILABLE_URL = stringPreferencesKey("update_available_url")
+        val UPDATE_NOTIFIED_VERSION = stringPreferencesKey("update_notified_version")
+        val UPDATE_DISMISSED_VERSION = stringPreferencesKey("update_dismissed_version")
     }
 }

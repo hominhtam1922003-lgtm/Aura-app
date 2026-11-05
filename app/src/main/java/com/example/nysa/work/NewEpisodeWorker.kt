@@ -10,6 +10,8 @@ import androidx.work.WorkerParameters
 import com.example.nysa.MainActivity
 import com.example.nysa.NySaApp
 import com.example.nysa.R
+import com.example.nysa.data.UpdateCheck
+import com.example.nysa.data.UpdateChecker
 import com.example.nysa.data.toItem
 import kotlinx.coroutines.flow.first
 
@@ -36,6 +38,11 @@ class NewEpisodeWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as NySaApp
         val settings = app.settings.flow.first()
+        // App-update check (1.0.6) rides EVERY worker run — including
+        // the on-open one — and is independent of the episode-notify
+        // toggle below: it stores any newer release for the in-app
+        // banner and posts one system notification per version.
+        runCatching { checkForAppUpdate(app, settings.lockScreenNotif) }
         if (!settings.notifyNewEpisode) return Result.success()
 
         val dao = app.database.userStateDao()
@@ -130,8 +137,69 @@ class NewEpisodeWorker(
         manager.notify(NOTIFICATION_ID, notification)
     }
 
+    /**
+     * One update check against GitHub Releases (same UpdateChecker
+     * the Tôi tab's manual check uses). A newer release is always
+     * stored for the in-app banner; the system notification fires
+     * only when this version is newer than the last one already
+     * announced, so a version is never announced twice.
+     */
+    private suspend fun checkForAppUpdate(app: NySaApp, lockScreenVisible: Boolean) {
+        val current = runCatching {
+            app.packageManager.getPackageInfo(app.packageName, 0).versionName
+        }.getOrNull() ?: ""
+        if (current.isBlank()) return
+        val result = UpdateChecker.check(current)
+        if (result !is UpdateCheck.Available) return
+        app.settings.setAvailableUpdate(result.version, result.apkUrl)
+        val notified = app.settings.updateNotifiedVersion.first()
+        if (UpdateChecker.compareVersions(result.version, notified) > 0) {
+            notifyAppUpdate(app, result.version, result.apkUrl, lockScreenVisible)
+            app.settings.setUpdateNotifiedVersion(result.version)
+        }
+    }
+
+    private fun notifyAppUpdate(
+        context: Context,
+        version: String,
+        apkUrl: String,
+        lockScreenVisible: Boolean
+    ) {
+        // Tapping the notification opens the APK download directly;
+        // without an asset URL it falls back to opening the app.
+        val intent = if (apkUrl.isNotBlank()) {
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } else {
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+        }
+        val pending = PendingIntent.getActivity(
+            context, 1, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val text = "NySa $version đã sẵn sàng — chạm để tải bản mới"
+        val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_APP_UPDATES)
+            .setSmallIcon(R.drawable.ic_bell)
+            .setContentTitle("Có bản cập nhật mới")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setVisibility(
+                if (lockScreenVisible) NotificationCompat.VISIBILITY_PUBLIC
+                else NotificationCompat.VISIBILITY_SECRET
+            )
+            .build()
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(UPDATE_NOTIFICATION_ID, notification)
+    }
+
     companion object {
         const val NOTIFICATION_ID = 2001
+        const val UPDATE_NOTIFICATION_ID = 2002
         private const val TAG = "NewEpisodeWorker"
 
         /** Max titles checked per run — rotation (not a hard cap) covers the rest. */

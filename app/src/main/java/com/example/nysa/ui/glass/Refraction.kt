@@ -64,14 +64,14 @@ half4 main(float2 coord) {
     sampleCoord = clamp(sampleCoord, float2(0.5, 0.5), uSize - float2(0.5, 0.5));
     half4 col = content.eval(sampleCoord);
     float rim = 1.0 - smoothstep(0.0, 2.0, abs(d + 1.0));
-    col.rgb += half3(rim * 0.07);
+    col.rgb += half3(rim * 0.09);
     return col;
 }
 """
 
-    /** Refraction band width / max sample displacement, in EFFECT-layer px (the ~0.6x downscaled space). */
-    const val BAND_PX = 34f
-    const val DISP_PX = 13f
+    /** Refraction band width / max sample displacement, in EFFECT-layer px (the 0.75x downscaled space). */
+    const val BAND_PX = 30f
+    const val DISP_PX = 17f
 
     private val cache = HashMap<String, RuntimeShader?>()
 

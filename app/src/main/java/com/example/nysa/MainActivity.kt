@@ -53,6 +53,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nysa.data.AppSettings
+import com.example.nysa.data.AvailableUpdate
+import com.example.nysa.data.UpdateChecker
 import com.example.nysa.data.local.UserStateEntity
 import com.example.nysa.data.model.EpisodeItem
 import com.example.nysa.data.model.Family
@@ -374,6 +376,31 @@ private fun NySaShell() {
         // Liquid new-episode banner (approved design): drops from the
         // top edge with a springy melt, names the titles — no counts.
         val newEvents by app.newEpisodeEvents.collectAsState()
+
+        // App-update banner (1.0.6): the background worker stores any
+        // newer release in SettingsStore. The banner shows once per
+        // version per session (auto-hide is session-only, like the
+        // episode banner consuming its event); × is "Để sau" and is
+        // persisted for THAT version only — a newer release announces
+        // again. When both banners are pending the episode banner
+        // takes the slot: it is time-sensitive, the update state
+        // persists and gets its turn right after.
+        val availableUpdate by app.settings.availableUpdate
+            .collectAsState(initial = AvailableUpdate())
+        val dismissedUpdate by app.settings.updateDismissedVersion
+            .collectAsState(initial = "")
+        val currentVersion = remember {
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull() ?: ""
+        }
+        var updateBannerHidden by remember { mutableStateOf(false) }
+        LaunchedEffect(availableUpdate.version) { updateBannerHidden = false }
+        val showUpdate = availableUpdate.version.isNotBlank() &&
+            availableUpdate.version != dismissedUpdate &&
+            !updateBannerHidden &&
+            UpdateChecker.compareVersions(availableUpdate.version, currentVersion) > 0
+
         if (newEvents.isNotEmpty()) {
             LiquidNewEpisodeBanner(
                 names = newEvents.map { it.second },
@@ -388,6 +415,33 @@ private fun NySaShell() {
                     }
                 },
                 onDismiss = { app.newEpisodeEvents.value = emptyList() },
+                modifier = Modifier.align(Alignment.TopCenter),
+                backdrop = if (useRealGlass) backdropState else null
+            )
+        } else if (showUpdate) {
+            LiquidUpdateBanner(
+                version = availableUpdate.version,
+                onDownload = {
+                    updateBannerHidden = true
+                    val url = availableUpdate.apkUrl.ifBlank {
+                        "https://github.com/hominhtam1922003-lgtm/NySa-app/releases/latest"
+                    }
+                    runCatching {
+                        context.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                android.net.Uri.parse(url)
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                },
+                onLater = {
+                    updateBannerHidden = true
+                    shellScope.launch {
+                        app.settings.setUpdateDismissedVersion(availableUpdate.version)
+                    }
+                },
+                onHide = { updateBannerHidden = true },
                 modifier = Modifier.align(Alignment.TopCenter),
                 backdrop = if (useRealGlass) backdropState else null
             )
@@ -513,6 +567,101 @@ private fun LiquidNewEpisodeBanner(
                 contentDescription = "Đóng",
                 tint = Color(0xFF9A9AA3),
                 modifier = Modifier.size(17.dp).clickable(onClick = onDismiss)
+            )
+        }
+      }
+    }
+}
+
+/**
+ * The app-update banner (1.0.6): the same liquid drop as the
+ * new-episode banner above — same spring, same melt, same 5.6 s
+ * auto-hide — announcing a newer release the background worker found.
+ * "Tải" opens the APK download; × is "Để sau" (persisted per version
+ * by the caller); the auto-hide is session-only via [onHide].
+ */
+@Composable
+private fun LiquidUpdateBanner(
+    version: String,
+    onDownload: () -> Unit,
+    onLater: () -> Unit,
+    onHide: () -> Unit,
+    modifier: Modifier = Modifier,
+    backdrop: BackdropState? = null
+) {
+    val glass = LocalGlassEnabled.current
+    val drop = remember { Animatable(-1.15f) }
+    LaunchedEffect(version) {
+        drop.animateTo(
+            0f,
+            spring(dampingRatio = 0.52f, stiffness = Spring.StiffnessMediumLow)
+        )
+    }
+    LaunchedEffect(version) {
+        delay(5_600)
+        onHide()
+    }
+    val progress = drop.value // -1.15 (hidden above) .. 0 (landed), overshoots > 0 while settling
+    val stretch = (1f - progress.coerceIn(-1f, 0.3f)).coerceIn(0.7f, 2f)
+    val bottomRadius = (26f * stretch).dp
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp)
+            .offset { IntOffset(0, (progress * 120.dp.toPx()).toInt()) }
+            .graphicsLayer {
+                scaleY = 1f + (stretch - 1f) * 0.10f
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+            }
+            .clickable(onClick = onDownload)
+    ) {
+      LiquidGlassBox(
+          shape = RoundedCornerShape(26.dp, 26.dp, bottomRadius, bottomRadius),
+          backdrop = backdrop,
+          backdropSlot = "banner"
+      ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_bell),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(19.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Có bản mới $version",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Bản cập nhật NySa đã sẵn sàng",
+                    color = Color(0xFFD8D8DE),
+                    fontSize = 12.5.sp,
+                    maxLines = 1
+                )
+            }
+            Text(
+                "Tải",
+                color = if (glass) Color.White else Color.Black,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (glass) 0.18f else 0.9f))
+                    .clickable(onClick = onDownload)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = "Để sau",
+                tint = Color(0xFF9A9AA3),
+                modifier = Modifier.size(17.dp).clickable(onClick = onLater)
             )
         }
       }

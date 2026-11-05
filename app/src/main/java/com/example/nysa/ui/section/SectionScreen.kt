@@ -1,6 +1,8 @@
 package com.example.nysa.ui.section
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -195,9 +197,14 @@ private fun SectionFilterSheet(
         sheetState = sheetState,
         containerColor = NySaSurface
     ) {
+        // Scrollable (1.0.6 fix): the old fixed Column was taller than
+        // the screen with the Phim genre group alone (~80 chips), so
+        // Quốc gia → Năm → Trạng thái → the action row were clipped
+        // below the visible area with no way to reach them.
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 .padding(bottom = 28.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Text(
                 "Bộ lọc — ${viewModel.family.label}",
@@ -251,7 +258,7 @@ private fun SectionFilterSheet(
                 GlassChip(label = "Xoá lọc", selected = false, onClick = {
                     genreId = 0; countryId = 0; year = 0; status = STATUS_ALL
                 })
-                GlassChip(label = "Áp dụng", selected = true, onClick = {
+                GlassChip(label = "Lọc", selected = true, onClick = {
                     viewModel.applyFilters(genreId, countryId, year, status)
                     onDismiss()
                 })

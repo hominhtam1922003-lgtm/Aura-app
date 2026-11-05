@@ -65,24 +65,43 @@ import com.example.nysa.ui.theme.NySaTextMuted
  * the tint layers above, blurred with stock RenderEffect (and
  * AGSL-refracted on API 33+). Still no backdrop-blur library.
  */
-fun Modifier.glassSurface(shape: Shape, glass: Boolean): Modifier = this
+/**
+ * The tint / sheen / rim layers of one glass surface.
+ *
+ * [lightTint] is ONLY for surfaces that already draw the real
+ * blurred backdrop underneath (LiquidGlassBox with a backdrop,
+ * 1.0.6-glass): the full-strength tint over the true blur read as a
+ * milky veil on-device ("đục ngầu"), so those surfaces use a much
+ * lighter tint + sheen. The rim border is shared verbatim — it is
+ * the bright edge that sells the glass. Tint-only callers pass the
+ * default and keep the original values untouched.
+ */
+fun Modifier.glassSurface(shape: Shape, glass: Boolean, lightTint: Boolean = false): Modifier = this
     .clip(shape)
     .then(
         if (glass) {
             Modifier
                 .background(
                     Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.15f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.09f)
-                        )
+                        if (lightTint) {
+                            listOf(
+                                Color.White.copy(alpha = 0.05f),
+                                Color.White.copy(alpha = 0.02f),
+                                Color.White.copy(alpha = 0.03f)
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.15f),
+                                Color.White.copy(alpha = 0.05f),
+                                Color.White.copy(alpha = 0.09f)
+                            )
+                        }
                     )
                 )
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.12f),
+                            Color.White.copy(alpha = if (lightTint) 0.05f else 0.12f),
                             Color.White.copy(alpha = 0.0f)
                         ),
                         startY = 0f,
@@ -181,7 +200,10 @@ fun LiquidGlassBox(
                         Modifier
                     }
                 )
-                .glassSurface(shape, true)
+                // Real-glass surfaces get the light tint (see
+                // glassSurface): the blurred backdrop underneath
+                // must stay visible, not veiled.
+                .glassSurface(shape, true, lightTint = backdrop != null)
         )
         content()
     }
