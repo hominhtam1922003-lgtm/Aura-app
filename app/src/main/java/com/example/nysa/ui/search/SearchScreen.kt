@@ -49,6 +49,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
@@ -77,10 +78,14 @@ class SearchViewModel(private val app: NySaApp) : ViewModel() {
         searchNow()
     }
 
-    @OptIn(FlowPreview::class)
-    fun bindQueryFlow(source: kotlinx.coroutines.flow.Flow<String>) {
+    init {
+        // Typing debounce lives in the VM (1.0.14): the UI no longer
+        // wires a snapshotFlow in, so the collector exists exactly
+        // once for the VM's whole lifetime.
+        @OptIn(FlowPreview::class)
         viewModelScope.launch {
-            source.debounce(350).distinctUntilChanged().collect { searchNow() }
+            _state.map { it.query }.debounce(350).distinctUntilChanged()
+                .collect { searchNow() }
         }
     }
 
@@ -126,21 +131,18 @@ class SearchViewModel(private val app: NySaApp) : ViewModel() {
  */
 @Composable
 fun SearchScreen(
+    viewModel: SearchViewModel,
     onOpenTitle: (TitleItem) -> Unit,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as NySaApp
-    val vm = remember { SearchViewModel(app) }
+    val vm = viewModel
     val state by vm.state.collectAsState()
     val history by app.settings.searchHistory.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
 
     BackHandler(onBack = onClose)
-    LaunchedEffect(Unit) {
-        vm.bindQueryFlow(snapshotFlow { text })
-    }
 
     Column(modifier = Modifier.fillMaxSize().padding(top = 10.dp)) {
         Row(
@@ -148,11 +150,8 @@ fun SearchScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             TextField(
-                value = text,
-                onValueChange = {
-                    text = it
-                    vm.setQuery(it)
-                },
+                value = state.query,
+                onValueChange = { vm.setQuery(it) },
                 placeholder = { Text("Tìm phim, anime…", color = NySaTextMuted) },
                 singleLine = true,
                 colors = TextFieldDefaults.colors(
@@ -196,7 +195,7 @@ fun SearchScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        if (text.isBlank() && history.isNotEmpty()) {
+        if (state.query.isBlank() && history.isNotEmpty()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text("Đã tìm gần đây", color = NySaTextMuted, fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold)
@@ -208,7 +207,6 @@ fun SearchScreen(
                         fontSize = 14.5.sp,
                         modifier = Modifier
                             .clickable {
-                                text = h
                                 vm.setQuery(h)
                                 vm.searchNow()
                             }

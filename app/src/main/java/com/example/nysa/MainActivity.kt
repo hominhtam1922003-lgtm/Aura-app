@@ -77,6 +77,7 @@ import com.example.nysa.ui.home.HomeViewModel
 import com.example.nysa.ui.library.LibraryScreen
 import com.example.nysa.ui.me.MeScreen
 import com.example.nysa.ui.search.SearchScreen
+import com.example.nysa.ui.search.SearchViewModel
 import com.example.nysa.ui.section.SectionScreen
 import com.example.nysa.ui.section.SectionViewModel
 import com.example.nysa.ui.theme.LocalGlassEnabled
@@ -234,6 +235,15 @@ private fun NySaShell() {
     var detailItem by remember { mutableStateOf<TitleItem?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     val shellScope = rememberCoroutineScope()
+    // ONE SaveableStateHolder for the whole shell (fix 1.0.12): it
+    // used to be created inside TabContent, but TabContent sits at
+    // two call sites (main shell + the blurred underlay behind
+    // Detail) and leaves composition at every branch switch — each
+    // switch threw the holder away, so the tabs' saved scroll died
+    // with it and lists restarted from the top after Detail/search.
+    // Hoisted here, one holder serves both call sites and survives
+    // the overlays.
+    val tabStateHolder = rememberSaveableStateHolder()
 
     // Real glass (1.0.5-glass): the tab content is recorded into one
     // shared backdrop layer that the floating tab bar + banner sample.
@@ -271,6 +281,21 @@ private fun NySaShell() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
                 return SectionViewModel(app, Family.ANIME) as T
+            }
+        }
+    )
+
+    // Search VM lives in the activity store too (fix 1.0.14): it
+    // used to be a plain `remember` inside SearchScreen, so opening
+    // a Detail (which un-composes the search branch) destroyed the
+    // query + results — one back-swipe and the whole search was
+    // gone. Hoisted here it survives Detail like the tab VMs do.
+    val searchVm: SearchViewModel = viewModel(
+        key = "search",
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return SearchViewModel(app) as T
             }
         }
     )
@@ -321,6 +346,7 @@ private fun NySaShell() {
                 Box(modifier = Modifier.fillMaxSize().underlayBlur(glass)) {
                     TabContent(
                         selected = selected,
+                        stateHolder = tabStateHolder,
                         homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
                         onOpenTitle = openTitle,
                         onFamilyChip = { fam ->
@@ -342,6 +368,7 @@ private fun NySaShell() {
         searchOpen -> {
             BackHandler { searchOpen = false }
             SearchScreen(
+                viewModel = searchVm,
                 onOpenTitle = openTitle,
                 onClose = { searchOpen = false }
             )
@@ -361,6 +388,7 @@ private fun NySaShell() {
         ) {
             TabContent(
                 selected = selected,
+                stateHolder = tabStateHolder,
                 homeVm = homeVm, phimVm = phimVm, animeVm = animeVm,
                 onOpenTitle = openTitle,
                 onFamilyChip = { fam -> selected = if (fam == Family.PHIM) 1 else 2 },
@@ -524,6 +552,7 @@ private fun NySaShell() {
 @Composable
 private fun TabContent(
     selected: Int,
+    stateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
     homeVm: HomeViewModel,
     phimVm: SectionViewModel,
     animeVm: SectionViewModel,
@@ -532,7 +561,6 @@ private fun TabContent(
     onResume: (TitleItem) -> Unit,
     onGoSearch: () -> Unit
 ) {
-    val stateHolder = rememberSaveableStateHolder()
     stateHolder.SaveableStateProvider(key = "tab-$selected") {
         when (selected) {
             0 -> HomeScreen(
