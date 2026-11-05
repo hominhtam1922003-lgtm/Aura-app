@@ -84,7 +84,7 @@ object ReportStore {
     fun formatText(list: List<ErrorReport>): String {
         if (list.isEmpty()) return "Chưa có báo lỗi nào."
         val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US)
-        val sb = StringBuilder("Báo lỗi từ app NySa (${list.size}):\n")
+        val sb = StringBuilder("Báo lỗi từ app Aura (${list.size}):\n")
         list.forEach { r ->
             sb.append("\n• [${fmt.format(Date(r.timeEpochSec * 1000))}] ${r.titleName}")
             if (r.unitLabel.isNotBlank()) sb.append(" — ${r.unitLabel}")

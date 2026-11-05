@@ -180,7 +180,7 @@ class NewEpisodeWorker(
             context, 1, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val text = "NySa $version đã sẵn sàng — chạm để tải bản mới"
+        val text = "Aura $version đã sẵn sàng — chạm để tải bản mới"
         val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_APP_UPDATES)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle("Có bản cập nhật mới")

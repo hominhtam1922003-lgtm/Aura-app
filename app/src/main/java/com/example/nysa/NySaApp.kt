@@ -104,7 +104,7 @@ class NySaApp : Application(), ImageLoaderFactory {
                 CHANNEL_APP_UPDATES,
                 "Cập nhật ứng dụng",
                 NotificationManager.IMPORTANCE_DEFAULT
-            ).apply { description = "Báo khi NySa có bản mới" }
+            ).apply { description = "Báo khi Aura có bản mới" }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
             manager?.createNotificationChannel(updateChannel)

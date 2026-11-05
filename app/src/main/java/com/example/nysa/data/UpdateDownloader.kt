@@ -144,10 +144,10 @@ object UpdateDownloader {
             }
             val request = DownloadManager.Request(Uri.parse(url))
                 .setMimeType(APK_MIME)
-                .setTitle("NySa $version")
+                .setTitle("Aura $version")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                 .setDestinationInExternalFilesDir(
-                    appCtx, Environment.DIRECTORY_DOWNLOADS, "NySa-$version.apk"
+                    appCtx, Environment.DIRECTORY_DOWNLOADS, "Aura-$version.apk"
                 )
             downloadId = dm.enqueue(request)
             handledVersion = ""
@@ -294,7 +294,7 @@ object UpdateDownloader {
         )
         val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_APP_UPDATES)
             .setSmallIcon(R.drawable.ic_bell)
-            .setContentTitle("Đã tải xong NySa $version")
+            .setContentTitle("Đã tải xong Aura $version")
             .setContentText("Chạm để cài đặt")
             .setContentIntent(pending)
             .setAutoCancel(true)

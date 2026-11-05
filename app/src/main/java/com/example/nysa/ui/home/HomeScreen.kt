@@ -77,7 +77,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "NySa",
+                        "Aura",
                         color = Color.White,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Black

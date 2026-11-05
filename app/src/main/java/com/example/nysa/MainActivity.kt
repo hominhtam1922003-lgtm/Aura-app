@@ -714,7 +714,7 @@ private fun LiquidUpdateBanner(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Bản cập nhật NySa đã sẵn sàng",
+                    "Bản cập nhật Aura đã sẵn sàng",
                     color = Color(0xFFD8D8DE),
                     fontSize = 12.5.sp,
                     maxLines = 1

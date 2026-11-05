@@ -129,7 +129,7 @@ fun MeScreen() {
                 }
                 Spacer(Modifier.size(12.dp))
                 Column {
-                    Text("NySa", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                    Text("Aura", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
                     Text("App xem phim cá nhân", color = NySaTextMuted, fontSize = 12.5.sp)
                 }
             }
