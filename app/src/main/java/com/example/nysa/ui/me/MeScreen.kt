@@ -40,6 +40,7 @@ import com.example.nysa.data.ReportStore
 import com.example.nysa.data.SettingsStore
 import com.example.nysa.data.UpdateCheck
 import com.example.nysa.data.UpdateChecker
+import com.example.nysa.data.UpdateDownloader
 import com.example.nysa.ui.components.AmbientBackdrop
 import com.example.nysa.ui.components.GlassSwitch
 import com.example.nysa.ui.components.LiquidGlassBox
@@ -92,6 +93,9 @@ fun MeScreen() {
     }
     var updateCheck by remember { mutableStateOf<UpdateCheck?>(null) }
     var checkingUpdate by remember { mutableStateOf(false) }
+    // In-app download/install state (1.0.7): drives the label of the
+    // "Tải bản mới" action below so the button narrates the download.
+    val dlState by UpdateDownloader.state.collectAsState()
 
     fun checkUpdate() {
         if (checkingUpdate) return
@@ -330,24 +334,48 @@ fun MeScreen() {
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(Modifier.height(8.dp))
+                            // 1.0.7: downloads + installs IN-APP via
+                            // UpdateDownloader; the label follows its
+                            // state for THIS version. (An empty apkUrl
+                            // still falls back to the browser inside
+                            // UpdateDownloader.start.)
+                            val dl = dlState
+                            val dlForThis = when (dl) {
+                                is UpdateDownloader.State.Downloading ->
+                                    dl.version == avail.version
+                                is UpdateDownloader.State.Ready ->
+                                    dl.version == avail.version
+                                is UpdateDownloader.State.AwaitingInstallPermission ->
+                                    dl.version == avail.version
+                                is UpdateDownloader.State.Failed ->
+                                    dl.version == avail.version
+                                else -> false
+                            }
+                            val dlLabel = when {
+                                dl is UpdateDownloader.State.Downloading && dlForThis ->
+                                    if (dl.progressPercent >= 0)
+                                        "Đang tải… ${dl.progressPercent}%"
+                                    else "Đang tải…"
+                                dl is UpdateDownloader.State.Ready && dlForThis ->
+                                    "Cài đặt bản mới"
+                                dl is UpdateDownloader.State.AwaitingInstallPermission &&
+                                    dlForThis ->
+                                    "Đã tải xong — bấm để cấp quyền & cài"
+                                dl is UpdateDownloader.State.Failed && dlForThis ->
+                                    "Thử tải lại"
+                                else -> "Tải bản mới"
+                            }
                             Text(
-                                "Tải bản mới",
+                                dlLabel,
                                 color = Color.White, fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.clickable {
-                                    val url = avail.apkUrl.ifBlank {
-                                        "https://github.com/hominhtam1922003-lgtm/NySa-app/releases/latest"
-                                    }
-                                    runCatching {
-                                        context.startActivity(
-                                            android.content.Intent(
-                                                android.content.Intent.ACTION_VIEW,
-                                                android.net.Uri.parse(url)
-                                            ).addFlags(
-                                                android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                                            )
-                                        )
-                                    }
+                                modifier = Modifier.clickable(
+                                    enabled = !(dl is UpdateDownloader.State.Downloading &&
+                                        dlForThis)
+                                ) {
+                                    UpdateDownloader.start(
+                                        context, avail.version, avail.apkUrl
+                                    )
                                 }.padding(2.dp)
                             )
                         }

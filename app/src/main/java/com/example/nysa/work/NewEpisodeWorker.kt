@@ -12,6 +12,7 @@ import com.example.nysa.NySaApp
 import com.example.nysa.R
 import com.example.nysa.data.UpdateCheck
 import com.example.nysa.data.UpdateChecker
+import com.example.nysa.data.UpdateDownloader
 import com.example.nysa.data.toItem
 import kotlinx.coroutines.flow.first
 
@@ -165,16 +166,15 @@ class NewEpisodeWorker(
         apkUrl: String,
         lockScreenVisible: Boolean
     ) {
-        // Tapping the notification opens the APK download directly;
-        // without an asset URL it falls back to opening the app.
-        val intent = if (apkUrl.isNotBlank()) {
-            Intent(Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl)).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-        } else {
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
+        // Tapping the notification opens the app itself (1.0.7): the
+        // extras tell MainActivity to start the IN-APP download —
+        // the update no longer jumps out to the browser.
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(UpdateDownloader.EXTRA_AUTO_UPDATE, "1")
+            putExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_VERSION, version)
+            putExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_URL, apkUrl)
         }
         val pending = PendingIntent.getActivity(
             context, 1, intent,

@@ -55,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nysa.data.AppSettings
 import com.example.nysa.data.AvailableUpdate
 import com.example.nysa.data.UpdateChecker
+import com.example.nysa.data.UpdateDownloader
 import com.example.nysa.data.local.UserStateEntity
 import com.example.nysa.data.model.EpisodeItem
 import com.example.nysa.data.model.Family
@@ -149,6 +150,56 @@ class MainActivity : ComponentActivity() {
                 Box(modifier = Modifier.fillMaxSize().padding(top = 12.dp)) {
                     NySaShell()
                 }
+            }
+        }
+        handleUpdateIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleUpdateIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // In-app update installs (1.0.7) may only be LAUNCHED while
+        // the app is foreground; a download that finished in the
+        // background gets its single install offer here.
+        UpdateDownloader.appInForeground = true
+        UpdateDownloader.onForeground(this)
+    }
+
+    override fun onPause() {
+        UpdateDownloader.appInForeground = false
+        super.onPause()
+    }
+
+    /**
+     * Deep link from the app-update system notification (1.0.7): the
+     * worker no longer points ACTION_VIEW at the browser — tapping it
+     * lands here and the download runs inside the app. Version/URL
+     * come from the intent extras the worker attached, healed from
+     * the stored AvailableUpdate when an extra is missing.
+     */
+    private fun handleUpdateIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.getStringExtra(UpdateDownloader.EXTRA_AUTO_UPDATE) != "1") return
+        val extraVersion =
+            intent.getStringExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_VERSION).orEmpty()
+        val extraUrl =
+            intent.getStringExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_URL).orEmpty()
+        // Consume the extras so a recreate never re-triggers.
+        intent.removeExtra(UpdateDownloader.EXTRA_AUTO_UPDATE)
+        intent.removeExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_VERSION)
+        intent.removeExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_URL)
+        lifecycleScope.launch {
+            val app = application as NySaApp
+            val stored = app.settings.availableUpdate.first()
+            val version = extraVersion.ifBlank { stored.version }
+            val url = extraUrl.ifBlank { stored.apkUrl }
+            if (version.isNotBlank()) {
+                UpdateDownloader.start(this@MainActivity, version, url)
             }
         }
     }
@@ -401,6 +452,32 @@ private fun NySaShell() {
             !updateBannerHidden &&
             UpdateChecker.compareVersions(availableUpdate.version, currentVersion) > 0
 
+        // In-app download state (1.0.7): the banner's action label
+        // narrates the download of the version it announces.
+        val dlState by UpdateDownloader.state.collectAsState()
+        val dl = dlState
+        val dlForBanner = when (dl) {
+            is UpdateDownloader.State.Downloading ->
+                dl.version == availableUpdate.version
+            is UpdateDownloader.State.Ready ->
+                dl.version == availableUpdate.version
+            is UpdateDownloader.State.AwaitingInstallPermission ->
+                dl.version == availableUpdate.version
+            is UpdateDownloader.State.Failed ->
+                dl.version == availableUpdate.version
+            else -> false
+        }
+        val dlBannerLabel = when {
+            dl is UpdateDownloader.State.Downloading && dlForBanner ->
+                if (dl.progressPercent >= 0) "Đang tải… ${dl.progressPercent}%"
+                else "Đang tải…"
+            dl is UpdateDownloader.State.Ready && dlForBanner -> "Cài đặt"
+            dl is UpdateDownloader.State.AwaitingInstallPermission && dlForBanner ->
+                "Cài đặt"
+            dl is UpdateDownloader.State.Failed && dlForBanner -> "Thử lại"
+            else -> "Tải"
+        }
+
         if (newEvents.isNotEmpty()) {
             LiquidNewEpisodeBanner(
                 names = newEvents.map { it.second },
@@ -421,19 +498,14 @@ private fun NySaShell() {
         } else if (showUpdate) {
             LiquidUpdateBanner(
                 version = availableUpdate.version,
+                actionLabel = dlBannerLabel,
                 onDownload = {
-                    updateBannerHidden = true
-                    val url = availableUpdate.apkUrl.ifBlank {
-                        "https://github.com/hominhtam1922003-lgtm/NySa-app/releases/latest"
-                    }
-                    runCatching {
-                        context.startActivity(
-                            Intent(
-                                Intent.ACTION_VIEW,
-                                android.net.Uri.parse(url)
-                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    }
+                    // 1.0.7: download + install in-app; the banner
+                    // stays up so its label can narrate progress
+                    // (start() itself is a no-op mid-download).
+                    UpdateDownloader.start(
+                        context, availableUpdate.version, availableUpdate.apkUrl
+                    )
                 },
                 onLater = {
                     updateBannerHidden = true
@@ -577,12 +649,15 @@ private fun LiquidNewEpisodeBanner(
  * The app-update banner (1.0.6): the same liquid drop as the
  * new-episode banner above — same spring, same melt, same 5.6 s
  * auto-hide — announcing a newer release the background worker found.
- * "Tải" opens the APK download; × is "Để sau" (persisted per version
- * by the caller); the auto-hide is session-only via [onHide].
+ * The action button downloads + installs IN-APP (1.0.7) and its
+ * label follows the download state via [actionLabel]; × is "Để sau"
+ * (persisted per version by the caller); the auto-hide is
+ * session-only via [onHide].
  */
 @Composable
 private fun LiquidUpdateBanner(
     version: String,
+    actionLabel: String = "Tải",
     onDownload: () -> Unit,
     onLater: () -> Unit,
     onHide: () -> Unit,
@@ -646,7 +721,7 @@ private fun LiquidUpdateBanner(
                 )
             }
             Text(
-                "Tải",
+                actionLabel,
                 color = if (glass) Color.White else Color.Black,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,

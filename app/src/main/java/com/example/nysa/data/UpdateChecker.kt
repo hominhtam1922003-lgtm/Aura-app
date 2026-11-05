@@ -17,8 +17,9 @@ sealed class UpdateCheck {
 /**
  * Manual update check (1.0.4): NySa ships outside any store, so tab
  * Tôi asks GitHub for the latest release of the app's own repo and
- * compares version numbers. It only ever OFFERS the APK link (the UI
- * opens it in the browser) — nothing downloads or installs itself.
+ * compares version numbers. It only REPORTS the newest release and
+ * its APK URL — the actual download + install lives in
+ * [UpdateDownloader] (in-app since 1.0.7).
  */
 object UpdateChecker {
 

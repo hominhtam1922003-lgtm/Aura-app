@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.nysa"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.0.6-glass"
+        versionCode = 8
+        versionName = "1.0.7-glass"
     }
 
     signingConfigs {
