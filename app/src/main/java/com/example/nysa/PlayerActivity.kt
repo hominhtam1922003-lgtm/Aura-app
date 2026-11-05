@@ -252,6 +252,11 @@ private fun PlayerScreen(
             }
     }
     var isPlaying by remember { mutableStateOf(false) }
+    // Keep-screen-on (user order 2026-11-06): while watching, the screen
+    // must never dim or sleep — always on by default, NOT a setting.
+    // Pausing starts a 30-minute grace; past it the flag is released so
+    // the phone can sleep again. 0 = not paused / flag not on a timer.
+    var pauseStartedAtMs by remember { mutableLongStateOf(0L) }
     var isBuffering by remember { mutableStateOf(false) }
     var ended by remember { mutableStateOf(false) }
     var positionMs by remember { mutableLongStateOf(0) }
@@ -441,6 +446,14 @@ private fun PlayerScreen(
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 onPipEligible(playing && settings.pipEnabled)
+                if (playing) {
+                    pauseStartedAtMs = 0L
+                    activity.window.addFlags(
+                        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    )
+                } else if (pauseStartedAtMs == 0L) {
+                    pauseStartedAtMs = android.os.SystemClock.elapsedRealtime()
+                }
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
@@ -533,6 +546,9 @@ private fun PlayerScreen(
         exo.addListener(listener)
         onDispose {
             viewModel.saveProgress(exo.currentPosition, exo.duration)
+            activity.window.clearFlags(
+                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
             exo.removeListener(listener)
             exo.release()
             onPipEligible(false)
@@ -547,6 +563,15 @@ private fun PlayerScreen(
             durationMs = exo.duration.coerceAtLeast(0)
             // C5 (K11): real buffered position for the seek bar's middle layer.
             bufferedMs = exo.bufferedPosition.coerceAtLeast(0)
+            // Keep-screen-on grace expiry (see pauseStartedAtMs).
+            if (!exo.isPlaying && pauseStartedAtMs != 0L &&
+                android.os.SystemClock.elapsedRealtime() - pauseStartedAtMs > 30 * 60 * 1000L
+            ) {
+                activity.window.clearFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                )
+                pauseStartedAtMs = 0L
+            }
             ticks++
             if (ticks % 10 == 0 && durationMs > 0) {
                 viewModel.saveProgress(positionMs, durationMs)
@@ -1065,6 +1090,15 @@ private fun EmbedPlayer(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    // Embeds are a watch screen too: keep the screen on while it is
+    // open (same user order as the stream player); cleared on exit.
+    DisposableEffect(Unit) {
+        val win = (context as? PlayerActivity)?.window
+        win?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            win?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     var webView by remember { mutableStateOf<WebView?>(null) }
     // 1.3.2: the last embedUrl actually loaded into the WebView. The
     // reload guard compares against THIS, never view.url — with the
