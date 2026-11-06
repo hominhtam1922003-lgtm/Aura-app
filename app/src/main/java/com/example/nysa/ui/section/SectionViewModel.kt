@@ -9,6 +9,7 @@ import com.example.nysa.data.model.TitleItem
 import com.example.nysa.data.model.matchesStatus
 import com.example.nysa.data.source.FilterOption
 import com.example.nysa.data.toEntity
+import com.example.nysa.data.toItem
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +67,9 @@ class SectionViewModel(
     /** One-shot flag for the Anime genre probe (see probeAnimeGenres). */
     private var genreProbeDone = false
 
+    /** True when init repainted the default view from the disk cache. */
+    private var cacheRestored = false
+
     init {
         viewModelScope.launch {
             // Seed taxonomy-driven options for the Phim tab.
@@ -98,7 +102,12 @@ class SectionViewModel(
                 }
             }
         }
-        reload()
+        // 1.0.15 (resilience): repaint the default view from the disk
+        // cache first, then refresh from the network on top of it.
+        viewModelScope.launch {
+            restoreSectionCache()
+            reload(keepItems = cacheRestored)
+        }
     }
 
     fun setSubType(subType: String) {
@@ -114,12 +123,46 @@ class SectionViewModel(
         reload()
     }
 
-    fun reload() {
+    fun reload(keepItems: Boolean = false) {
         val gen = ++generation
         _state.update {
-            it.copy(items = emptyList(), page = 0, hasMore = true, loading = true, error = "")
+            it.copy(
+                items = if (keepItems) it.items else emptyList(),
+                page = if (keepItems) it.page else 0,
+                hasMore = if (keepItems) it.hasMore else true,
+                loading = true,
+                error = ""
+            )
         }
         loadPage(gen, 1)
+    }
+
+    private fun isDefaultFilter(s: SectionUiState): Boolean =
+        s.subType == "all" && s.genreId == 0 && s.countryId == 0 &&
+            s.year == 0 && s.status == STATUS_ALL
+
+    /**
+     * 1.0.15: restore the DEFAULT view (no filters) from the structural
+     * list cache + Room title rows. Reconstructed items lack the genre
+     * facets of a live page (TitleEntity does not store them), so
+     * filter-option accumulation stays with the network pass that
+     * immediately follows; the status filter is ALL here by
+     * definition, so nothing restored can be mis-shown.
+     */
+    private suspend fun restoreSectionCache() {
+        if (!isDefaultFilter(_state.value)) return
+        val cached = runCatching { app.listCache.sectionDefault(family) }
+            .getOrNull() ?: return
+        val rows = runCatching {
+            app.database.titleDao().getByIds(cached.ids).associateBy { it.id }
+        }.getOrDefault(emptyMap())
+        val items = cached.ids.mapNotNull { rows[it]?.toItem() }
+            .distinctBy { it.slug }
+        if (items.isEmpty()) return
+        cacheRestored = true
+        _state.update {
+            it.copy(items = items, page = cached.page, hasMore = cached.hasMore)
+        }
     }
 
     fun loadMore() {
@@ -210,6 +253,18 @@ class SectionViewModel(
                             cur.genreOptions
                         }
                     )
+                }
+                // 1.0.15: persist the default view's structure so the
+                // next cold start repaints instantly (see ListCache).
+                if (page == 1 && gen == generation && isDefaultFilter(s)) {
+                    runCatching {
+                        app.listCache.saveSectionDefault(
+                            family,
+                            _state.value.items.map { it.id },
+                            _state.value.page,
+                            _state.value.hasMore
+                        )
+                    }
                 }
                 // 1.0.4 (mục 5): fire the genre probe once the pool is
                 // deep enough to be representative (>= 30 accumulated

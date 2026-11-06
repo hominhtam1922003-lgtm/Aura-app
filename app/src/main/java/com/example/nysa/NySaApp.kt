@@ -12,6 +12,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.example.nysa.data.ListCache
 import com.example.nysa.data.SettingsStore
 import com.example.nysa.data.local.NySaDatabase
 import com.example.nysa.data.source.CobeSource
@@ -38,6 +39,9 @@ class NySaApp : Application(), ImageLoaderFactory {
 
     /** The one and only content source (user order 2026-11-04). */
     val cobe: CobeSource by lazy { CobeSource(settings) }
+
+    /** Structural list cache for instant cold-start repaints (1.0.15). */
+    val listCache: ListCache by lazy { ListCache(this) }
 
     /**
      * The video cache shared by the player (write-through streaming)
@@ -82,6 +86,10 @@ class NySaApp : Application(), ImageLoaderFactory {
                     .forEach { dao.upsert(it.copy(seenCount = it.latestCount)) }
             }
         }
+        // 1.0.15 (resilience): heal/verify the source's rotating
+        // domains up front, so the first user tap does not pay the
+        // rediscovery cost (or hit a dead base) mid-browse.
+        appScope.launch { runCatching { cobe.health() } }
         // Keep the background check schedule in sync with the user's setting.
         appScope.launch {
             settings.flow
@@ -138,7 +146,8 @@ class NySaApp : Application(), ImageLoaderFactory {
     /**
      * App-wide image loader (performance gate): posters are requested
      * at their display size by the cards themselves; here we bound the
-     * caches — memory 20% of the app budget, disk 256 MB — and give
+     * caches — memory 25% of the app budget, disk 1 GB (1.0.15, up
+     * from 256 MB so posters survive source/CDN outages) — and give
      * every request a whole-call ceiling so a slow CDN can never pin
      * a grid cell forever.
      */
@@ -158,11 +167,11 @@ class NySaApp : Application(), ImageLoaderFactory {
             .build()
         return ImageLoader.Builder(this)
             .okHttpClient(client)
-            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.20).build() }
+            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
             .diskCache {
                 DiskCache.Builder()
                     .directory(java.io.File(cacheDir, "nysa_image_cache"))
-                    .maxSizeBytes(256L * 1024 * 1024)
+                    .maxSizeBytes(1024L * 1024 * 1024)
                     .build()
             }
             .crossfade(false)
