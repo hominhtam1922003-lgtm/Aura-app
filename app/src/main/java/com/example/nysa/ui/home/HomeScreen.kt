@@ -31,7 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.R
 import com.example.nysa.data.local.UserStateEntity
 import com.example.nysa.data.model.Family
@@ -59,7 +59,7 @@ fun HomeScreen(
     onGoSearch: () -> Unit
 ) {
     val context = LocalContext.current
-    val app = context.applicationContext as NySaApp
+    val app = context.applicationContext as AuraApp
     val state by viewModel.state.collectAsState()
 
     val continueStates by app.database.userStateDao().continueWatching()
@@ -167,7 +167,7 @@ fun HomeScreen(
 /** Join user-state rows to their cached titles (instant, local-only). */
 @Composable
 fun rememberTitles(
-    app: NySaApp,
+    app: AuraApp,
     states: List<UserStateEntity>
 ): List<Pair<UserStateEntity, TitleItem>> {
     val ids = states.map { it.titleId }

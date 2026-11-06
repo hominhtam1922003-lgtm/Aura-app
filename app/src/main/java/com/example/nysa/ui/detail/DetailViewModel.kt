@@ -2,7 +2,7 @@ package com.example.nysa.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.ProbeTarget
 import com.example.nysa.data.ServerProbe
 import com.example.nysa.data.ServerStatus
@@ -30,7 +30,7 @@ data class DetailUiState(
 )
 
 class DetailViewModel(
-    private val app: NySaApp,
+    private val app: AuraApp,
     private val item: TitleItem
 ) : ViewModel() {
 

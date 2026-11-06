@@ -34,7 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.AppSettings
 import com.example.nysa.data.ReportStore
 import com.example.nysa.data.SettingsStore
@@ -64,7 +64,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MeScreen() {
     val context = LocalContext.current
-    val app = context.applicationContext as NySaApp
+    val app = context.applicationContext as AuraApp
     val settings by app.settings.flow.collectAsState(initial = AppSettings())
     val scope = rememberCoroutineScope()
     val glass = LocalGlassEnabled.current

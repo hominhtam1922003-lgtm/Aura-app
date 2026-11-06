@@ -1,10 +1,8 @@
 package com.example.nysa.ui.home
 
 import androidx.lifecycle.ViewModel
-import com.example.nysa.data.toEntity
-import com.example.nysa.data.toItem
 import androidx.lifecycle.viewModelScope
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.source.Shelf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +16,7 @@ data class HomeUiState(
     val error: String = ""
 )
 
-class HomeViewModel(private val app: NySaApp) : ViewModel() {
+class HomeViewModel(private val app: AuraApp) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -32,15 +30,11 @@ class HomeViewModel(private val app: NySaApp) : ViewModel() {
         // outages no longer open on an empty screen.
         viewModelScope.launch {
             runCatching {
-                val cached = app.listCache.homeShelves() ?: return@runCatching
+                // 1.0.16: the cache+Room restore lives behind the
+                // ContentRepository boundary now; behaviour unchanged.
+                val shelves = app.contentRepository.cachedHomeShelves()
+                    ?: return@runCatching
                 if (_state.value.shelves.isNotEmpty()) return@runCatching
-                val rows = app.database.titleDao()
-                    .getByIds(cached.flatMap { it.second })
-                    .associateBy { it.id }
-                val shelves = cached.mapNotNull { (name, ids) ->
-                    val items = ids.mapNotNull { rows[it]?.toItem() }
-                    if (items.isEmpty()) null else Shelf(name, items)
-                }
                 if (shelves.isNotEmpty()) {
                     _state.update { it.copy(loading = false, shelves = shelves) }
                 }
@@ -54,22 +48,9 @@ class HomeViewModel(private val app: NySaApp) : ViewModel() {
         refreshJob = viewModelScope.launch {
             _state.update { it.copy(loading = it.shelves.isEmpty(), error = "") }
             try {
-                val shelves = app.cobe.homeShelves()
-                // Persist what we show so library/detail render instantly later.
-                app.database.titleDao().upsertAll(
-                    shelves.flatMap { it.items }.map { item ->
-                        item.toEntity()
-                    }
-                )
-                // 1.0.15: persist the shelf structure too, so the next
-                // cold start can repaint before the network answers.
-                runCatching {
-                    app.listCache.saveHomeShelves(
-                        shelves.map { shelf ->
-                            shelf.name to shelf.items.map { it.id }
-                        }
-                    )
-                }
+                // 1.0.16: fetch + Room upsert + structure persist all
+                // happen inside ContentRepository.homeShelves().
+                val shelves = app.contentRepository.homeShelves()
                 _state.update { it.copy(loading = false, shelves = shelves) }
             } catch (e: Exception) {
                 _state.update {

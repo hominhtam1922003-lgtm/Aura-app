@@ -19,7 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.TimeText
 import com.example.nysa.data.model.TitleItem
 import com.example.nysa.ui.components.ContinueCard
@@ -40,7 +40,7 @@ fun LibraryScreen(
     onResume: (TitleItem) -> Unit
 ) {
     val context = LocalContext.current
-    val app = context.applicationContext as NySaApp
+    val app = context.applicationContext as AuraApp
     val dao = app.database.userStateDao()
 
     val continueStates by dao.continueWatching().collectAsState(initial = emptyList())

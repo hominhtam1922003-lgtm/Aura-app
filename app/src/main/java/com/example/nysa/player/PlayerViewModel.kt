@@ -2,7 +2,7 @@ package com.example.nysa.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.AdCutReport
 import com.example.nysa.data.ProbeTarget
 import com.example.nysa.data.ServerProbe
@@ -63,7 +63,7 @@ data class PlayerUiState(
 )
 
 class PlayerViewModel(
-    private val app: NySaApp,
+    private val app: AuraApp,
     private val titleId: String,
     private val episodeSlug: String,
     private val episodeNumber: Float = 0f

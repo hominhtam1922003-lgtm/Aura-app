@@ -15,7 +15,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.nysa.MainActivity
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -292,7 +292,7 @@ object UpdateDownloader {
             context, READY_REQUEST_CODE, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_APP_UPDATES)
+        val notification = NotificationCompat.Builder(context, AuraApp.CHANNEL_APP_UPDATES)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle("Đã tải xong Aura $version")
             .setContentText("Chạm để cài đặt")
@@ -336,7 +336,7 @@ object UpdateDownloader {
 
     private const val APK_MIME = "application/vnd.android.package-archive"
     private const val RELEASES_LATEST_URL =
-        "https://github.com/hominhtam1922003-lgtm/NySa-app/releases/latest"
+        "https://github.com/hominhtam1922003-lgtm/Aura-app/releases/latest"
     private const val POLL_MS = 700L
     private const val READY_NOTIFICATION_ID = 2003
     private const val READY_REQUEST_CODE = 3

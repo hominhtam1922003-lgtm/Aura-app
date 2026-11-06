@@ -24,7 +24,7 @@ sealed class UpdateCheck {
 object UpdateChecker {
 
     private const val LATEST_URL =
-        "https://api.github.com/repos/hominhtam1922003-lgtm/NySa-app/releases/latest"
+        "https://api.github.com/repos/hominhtam1922003-lgtm/Aura-app/releases/latest"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)

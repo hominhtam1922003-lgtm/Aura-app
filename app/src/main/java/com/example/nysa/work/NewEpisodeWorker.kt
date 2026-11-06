@@ -8,7 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.nysa.MainActivity
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.R
 import com.example.nysa.data.UpdateCheck
 import com.example.nysa.data.UpdateChecker
@@ -37,7 +37,7 @@ class NewEpisodeWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val app = applicationContext as NySaApp
+        val app = applicationContext as AuraApp
         val settings = app.settings.flow.first()
         // App-update check (1.0.6) rides EVERY worker run — including
         // the on-open one — and is independent of the episode-notify
@@ -122,7 +122,7 @@ class NewEpisodeWorker(
             "Có tập/chap mới: ${names.take(3).joinToString(", ")}" +
                 if (names.size > 3) "…" else ""
         }
-        val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_NEW_EPISODES)
+        val notification = NotificationCompat.Builder(context, AuraApp.CHANNEL_NEW_EPISODES)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle("Có tập mới")
             .setContentText(text)
@@ -145,7 +145,7 @@ class NewEpisodeWorker(
      * only when this version is newer than the last one already
      * announced, so a version is never announced twice.
      */
-    private suspend fun checkForAppUpdate(app: NySaApp, lockScreenVisible: Boolean) {
+    private suspend fun checkForAppUpdate(app: AuraApp, lockScreenVisible: Boolean) {
         val current = runCatching {
             app.packageManager.getPackageInfo(app.packageName, 0).versionName
         }.getOrNull() ?: ""
@@ -181,7 +181,7 @@ class NewEpisodeWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val text = "Aura $version đã sẵn sàng — chạm để tải bản mới"
-        val notification = NotificationCompat.Builder(context, NySaApp.CHANNEL_APP_UPDATES)
+        val notification = NotificationCompat.Builder(context, AuraApp.CHANNEL_APP_UPDATES)
             .setSmallIcon(R.drawable.ic_bell)
             .setContentTitle("Có bản cập nhật mới")
             .setContentText(text)

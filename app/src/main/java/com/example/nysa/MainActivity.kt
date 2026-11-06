@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
         }
         // "Chỉ khi mở app" check mode: run one check per app start.
         lifecycleScope.launch {
-            val app = application as NySaApp
+            val app = application as AuraApp
             if (app.settings.flow.first().checkInterval == "ON_OPEN") {
                 androidx.work.WorkManager.getInstance(this@MainActivity).enqueueUniqueWork(
                     "nysa_check_on_open",
@@ -145,7 +145,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            val app = application as NySaApp
+            val app = application as AuraApp
             val settings by app.settings.flow.collectAsState(initial = AppSettings())
             NySaTheme(glass = settings.liquidGlass) {
                 Box(modifier = Modifier.fillMaxSize().padding(top = 12.dp)) {
@@ -195,7 +195,7 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_VERSION)
         intent.removeExtra(UpdateDownloader.EXTRA_AUTO_UPDATE_URL)
         lifecycleScope.launch {
-            val app = application as NySaApp
+            val app = application as AuraApp
             val stored = app.settings.availableUpdate.first()
             val version = extraVersion.ifBlank { stored.version }
             val url = extraUrl.ifBlank { stored.apkUrl }
@@ -229,7 +229,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun NySaShell() {
     val context = LocalContext.current
-    val app = context.applicationContext as NySaApp
+    val app = context.applicationContext as AuraApp
     val glass = LocalGlassEnabled.current
     var selected by remember { mutableIntStateOf(0) }
     var detailItem by remember { mutableStateOf<TitleItem?>(null) }

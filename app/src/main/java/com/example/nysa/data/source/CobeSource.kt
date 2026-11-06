@@ -48,7 +48,7 @@ data class FilterOption(val id: String, val name: String)
  *    only (Nhật/Hàn/Trung/Đài). The by-slug record carries no country
  *    field, so the gate must live in the query, not in local data.
  */
-class CobeSource(private val settings: SettingsStore? = null) {
+class CobeSource(private val settings: SettingsStore? = null) : MovieSource {
 
     companion object {
         const val SOURCE_ID = "cobe"
@@ -170,7 +170,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
         }
     }
 
-    fun currentSiteBase(): String = siteBase
+    override fun currentSiteBase(): String = siteBase
 
     /**
      * GET against the API with ONE self-heal attempt: if the call fails
@@ -220,7 +220,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
     }
 
     /** Source health, measured — used by the Tôi tab's "Sức khoẻ nguồn" card. */
-    suspend fun health(): Pair<Boolean, Long> {
+    override suspend fun health(): Pair<Boolean, Long> {
         ensureBase()
         val start = System.currentTimeMillis()
         return try {
@@ -231,7 +231,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
         }
     }
 
-    fun currentApiBase(): String = apiBase
+    override fun currentApiBase(): String = apiBase
 
     // ------------------------------------------------------------------
     // JSON → model mapping
@@ -336,9 +336,9 @@ class CobeSource(private val settings: SettingsStore? = null) {
     // Listings
     // ------------------------------------------------------------------
 
-    suspend fun hot(): List<TitleItem> = resultItems(apiGet("/movies/hot"))
+    override suspend fun hot(): List<TitleItem> = resultItems(apiGet("/movies/hot"))
 
-    suspend fun homeShelves(): List<Shelf> {
+    override suspend fun homeShelves(): List<Shelf> {
         val json = apiGet("/lists/homepageLists?page=1&limit=15")
         val collections = json.optJSONObject("result")?.optJSONArray("collections")
             ?: return emptyList()
@@ -364,16 +364,16 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * dropped locally for the Phim tab; the Anime tab always passes
      * genres=24 + the country gate).
      */
-    suspend fun searchPage(
-        keyword: String = "",
-        type: String? = null,
-        genreIds: List<Int> = emptyList(),
-        countryIds: List<Int> = emptyList(),
-        year: Int = 0,
-        sort: String = "updatedAt",
-        page: Int = 1,
-        limit: Int = 24,
-        familyHint: Family? = null
+    override suspend fun searchPage(
+        keyword: String,
+        type: String?,
+        genreIds: List<Int>,
+        countryIds: List<Int>,
+        year: Int,
+        sort: String,
+        page: Int,
+        limit: Int,
+        familyHint: Family?
     ): Page {
         val q = StringBuilder("/movies/search?page=$page&limit=$limit&sort=$sort")
         if (keyword.isNotBlank()) {
@@ -392,13 +392,13 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * animation (genre 24) and tvshows are excluded locally — the tab must
      * never leak anime into Phim (user law: phim ra phim, anime ra anime).
      */
-    suspend fun phimPage(
-        type: String? = null,
-        genreId: Int = 0,
-        countryId: Int = 0,
-        year: Int = 0,
-        page: Int = 1,
-        limit: Int = 24
+    override suspend fun phimPage(
+        type: String?,
+        genreId: Int,
+        countryId: Int,
+        year: Int,
+        page: Int,
+        limit: Int
     ): Page {
         val raw = searchPage(
             type = type,
@@ -422,12 +422,12 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * series → Nhật only; movie → Asian countries only; "all" runs the
      * series query (the movie gate is applied when the user picks Phim lẻ).
      */
-    suspend fun animePage(
-        type: String? = "series",
-        genreId: Int = 0,
-        year: Int = 0,
-        page: Int = 1,
-        limit: Int = 24
+    override suspend fun animePage(
+        type: String?,
+        genreId: Int,
+        year: Int,
+        page: Int,
+        limit: Int
     ): Page {
         val genres = mutableListOf(GENRE_ANIME_ID)
         if (genreId > 0 && genreId != GENRE_ANIME_ID) genres += genreId
@@ -446,10 +446,10 @@ class CobeSource(private val settings: SettingsStore? = null) {
         )
     }
 
-    suspend fun searchKeyword(keyword: String, page: Int = 1, limit: Int = 24): Page =
+    override suspend fun searchKeyword(keyword: String, page: Int, limit: Int): Page =
         searchPage(keyword = keyword, page = page, limit = limit)
 
-    suspend fun categories(): List<FilterOption> {
+    override suspend fun categories(): List<FilterOption> {
         val json = apiGet("/categories?limit=100")
         val arr = json.optJSONArray("data") ?: return emptyList()
         val out = mutableListOf<FilterOption>()
@@ -460,7 +460,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
         return out
     }
 
-    suspend fun regions(): List<FilterOption> {
+    override suspend fun regions(): List<FilterOption> {
         // Paginated (1.0.6 fix): the table holds 140 regions but the
         // API caps limit at 100/page (limit=200 returns empty), so the
         // old single page silently dropped the last 40 — follow
@@ -488,9 +488,9 @@ class CobeSource(private val settings: SettingsStore? = null) {
     // ------------------------------------------------------------------
 
     /** The worker / quick-play routing entry: detail by the item itself. */
-    suspend fun detailFor(item: TitleItem): TitleDetail = detail(item.slug)
+    override suspend fun detailFor(item: TitleItem): TitleDetail = detail(item.slug)
 
-    suspend fun detail(slug: String): TitleDetail {
+    override suspend fun detail(slug: String): TitleDetail {
         val json = apiGet("/movies/by-slug/$slug")
         val m = json.optJSONObject("movie")
             ?: throw IllegalStateException("Nguồn không trả chi tiết cho phim này")
@@ -553,7 +553,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
      * call the Anime genre probe fans out over its sample (the old
      * probe paid a full detail() load per title).
      */
-    suspend fun genresOf(slug: String): List<FilterOption> {
+    override suspend fun genresOf(slug: String): List<FilterOption> {
         val json = apiGet("/movies/by-slug/$slug")
         val m = json.optJSONObject("movie") ?: return emptyList()
         val cats = m.optJSONArray("categories") ?: return emptyList()
@@ -637,7 +637,7 @@ class CobeSource(private val settings: SettingsStore? = null) {
      *  - any other embed      -> WebView embed surface.
      * Fallbacks always end with the source watch page itself.
      */
-    suspend fun resolvePlay(locatorSlug: String): CobePlay {
+    override suspend fun resolvePlay(locatorSlug: String): CobePlay {
         val (movieSlug, episodeId) = parseLocator(locatorSlug)
             ?: throw IllegalStateException("Định danh tập không hợp lệ")
         ensureSite()

@@ -2,14 +2,12 @@ package com.example.nysa.ui.section
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.data.model.Family
 import com.example.nysa.data.model.STATUS_ALL
 import com.example.nysa.data.model.TitleItem
 import com.example.nysa.data.model.matchesStatus
 import com.example.nysa.data.source.FilterOption
-import com.example.nysa.data.toEntity
-import com.example.nysa.data.toItem
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +53,7 @@ data class SectionUiState(
  * completion is derived from episode counts in the model).
  */
 class SectionViewModel(
-    private val app: NySaApp,
+    private val app: AuraApp,
     val family: Family
 ) : ViewModel() {
 
@@ -74,9 +72,9 @@ class SectionViewModel(
         viewModelScope.launch {
             // Seed taxonomy-driven options for the Phim tab.
             if (family == Family.PHIM) {
-                val genres = runCatching { app.cobe.categories() }.getOrDefault(emptyList())
+                val genres = runCatching { app.contentRepository.categories() }.getOrDefault(emptyList())
                     .filter { it.id != "24" } // Hoạt hình belongs to the Anime tab only
-                val regions = runCatching { app.cobe.regions() }.getOrDefault(emptyList())
+                val regions = runCatching { app.contentRepository.regions() }.getOrDefault(emptyList())
                 _state.update {
                     it.copy(genreOptions = genres, countryOptions = regions)
                 }
@@ -151,17 +149,13 @@ class SectionViewModel(
      */
     private suspend fun restoreSectionCache() {
         if (!isDefaultFilter(_state.value)) return
-        val cached = runCatching { app.listCache.sectionDefault(family) }
+        // 1.0.16: cache+Room restore lives behind ContentRepository;
+        // it returns null exactly where the old inline code bailed.
+        val cached = runCatching { app.contentRepository.cachedSectionDefault(family) }
             .getOrNull() ?: return
-        val rows = runCatching {
-            app.database.titleDao().getByIds(cached.ids).associateBy { it.id }
-        }.getOrDefault(emptyMap())
-        val items = cached.ids.mapNotNull { rows[it]?.toItem() }
-            .distinctBy { it.slug }
-        if (items.isEmpty()) return
         cacheRestored = true
         _state.update {
-            it.copy(items = items, page = cached.page, hasMore = cached.hasMore)
+            it.copy(items = cached.items, page = cached.page, hasMore = cached.hasMore)
         }
     }
 
@@ -198,14 +192,14 @@ class SectionViewModel(
                 while (true) {
                     val result = try {
                         when (family) {
-                            Family.PHIM -> app.cobe.phimPage(
+                            Family.PHIM -> app.contentRepository.phimPage(
                                 type = type,
                                 genreId = s.genreId,
                                 countryId = s.countryId,
                                 year = s.year,
                                 page = nextPage
                             )
-                            Family.ANIME -> app.cobe.animePage(
+                            Family.ANIME -> app.contentRepository.animePage(
                                 type = type ?: "series",
                                 genreId = s.genreId,
                                 year = s.year,
@@ -219,7 +213,7 @@ class SectionViewModel(
                     }
                     if (result == null) break
                     if (gen != generation) return@launch
-                    app.database.titleDao().upsertAll(result.items.map { it.toEntity() })
+                    app.contentRepository.cacheTitles(result.items)
                     fetchedItems += result.items
                     visibleItems += result.items.filter { it.matchesStatus(s.status) }
                     lastHasMore = result.hasMore
@@ -258,7 +252,7 @@ class SectionViewModel(
                 // next cold start repaints instantly (see ListCache).
                 if (page == 1 && gen == generation && isDefaultFilter(s)) {
                     runCatching {
-                        app.listCache.saveSectionDefault(
+                        app.contentRepository.saveSectionDefault(
                             family,
                             _state.value.items.map { it.id },
                             _state.value.page,
@@ -313,7 +307,7 @@ class SectionViewModel(
             val found = sample.map { item ->
                 async {
                     gate.withPermit {
-                        runCatching { app.cobe.genresOf(item.slug) }
+                        runCatching { app.contentRepository.genresOf(item.slug) }
                             .getOrDefault(emptyList())
                     }
                 }

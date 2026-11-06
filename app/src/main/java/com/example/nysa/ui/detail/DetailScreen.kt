@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.nysa.NySaApp
+import com.example.nysa.AuraApp
 import com.example.nysa.R
 import com.example.nysa.data.ServerStatus
 import com.example.nysa.data.model.EpisodeItem
@@ -76,7 +76,7 @@ fun DetailScreen(
     onOpenTitle: (TitleItem) -> Unit
 ) {
     val context = LocalContext.current
-    val app = context.applicationContext as NySaApp
+    val app = context.applicationContext as AuraApp
     val vm: DetailViewModel = viewModel(
         key = "detail-${item.id}",
         factory = object : ViewModelProvider.Factory {
