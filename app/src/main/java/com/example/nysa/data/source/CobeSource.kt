@@ -8,6 +8,9 @@ import com.example.nysa.data.model.ServerGroup
 import com.example.nysa.data.model.TitleDetail
 import com.example.nysa.data.model.TitleItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -208,15 +211,48 @@ class CobeSource(private val settings: SettingsStore? = null) : MovieSource {
         val home = httpGet("$siteBase/")
         val chunks = Regex("src=\"(/_next/static/chunks/[^\"]+\\.js)\"")
             .findAll(home).map { it.groupValues[1] }.take(14).toList()
-        var found: String? = null
-        for (chunk in chunks) {
-            if (found != null) break
-            val js = runCatching { httpGet(siteBase + chunk) }.getOrNull() ?: continue
-            found = hostRegex.find(js)?.value
+        // 1.0.17: fetch candidate chunks CONCURRENTLY and take the
+        // first match in page order — the old sequential scan could
+        // stack 14 round trips on top of the failure that triggered
+        // rediscovery, which is exactly the stall users felt.
+        val bodies = coroutineScope {
+            chunks.map { chunk ->
+                async { runCatching { httpGet(siteBase + chunk) }.getOrNull() }
+            }.awaitAll()
         }
+        val found = bodies.asSequence()
+            .mapNotNull { js -> js?.let { hostRegex.find(it)?.value } }
+            .firstOrNull()
         found?.let { "$it/api/v1" }
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * App-open self-heal (1.0.17): the pre-1.0.17 warm-up only PROBED
+     * the saved host via health(), so a rotated/dead host was still
+     * discovered inline by the first list load — failed request, then
+     * homepage + chunk scan, then retry, all while the user stared at
+     * placeholders. warmUp() pays that cost in the background at open:
+     * probe once, and on failure rediscover + persist immediately.
+     */
+    override suspend fun warmUp() {
+        ensureBase()
+        val alive = try {
+            httpGet("$apiBase/movies/hot")
+            true
+        } catch (e: Exception) {
+            false
+        }
+        if (alive) return
+        val fresh = rediscoverApiBase() ?: return
+        if (fresh != apiBase) {
+            apiBase = fresh
+            try {
+                settings?.setCobeApiHost(fresh)
+            } catch (ignored: Exception) {
+            }
+        }
     }
 
     /** Source health, measured — used by the Tôi tab's "Sức khoẻ nguồn" card. */

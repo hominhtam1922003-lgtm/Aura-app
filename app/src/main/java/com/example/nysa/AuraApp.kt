@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -100,7 +101,9 @@ class AuraApp : Application(), ImageLoaderFactory {
         // 1.0.15 (resilience): heal/verify the source's rotating
         // domains up front, so the first user tap does not pay the
         // rediscovery cost (or hit a dead base) mid-browse.
-        appScope.launch { runCatching { cobe.health() } }
+        // 1.0.17: warmUp() actually HEALS — the old health() probe
+        // only observed a dead host and left the cost to the first load.
+        appScope.launch { runCatching { cobe.warmUp() } }
         // Keep the background check schedule in sync with the user's setting.
         appScope.launch {
             settings.flow
@@ -164,6 +167,16 @@ class AuraApp : Application(), ImageLoaderFactory {
      */
     override fun newImageLoader(): ImageLoader {
         val client = OkHttpClient.Builder()
+            .dispatcher(
+                Dispatcher().apply {
+                    maxRequests = 64
+                    // 1.0.17: every poster lives on ONE CDN host, so
+                    // OkHttp's default 5-requests-per-host queue made
+                    // grid cells wait behind each other whenever files
+                    // were slow (~3 s/poster measured 2026-11-06).
+                    maxRequestsPerHost = 16
+                }
+            )
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .callTimeout(25, TimeUnit.SECONDS)

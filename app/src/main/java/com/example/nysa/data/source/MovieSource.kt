@@ -76,6 +76,14 @@ interface MovieSource {
     /** Source health, measured: reachable flag + round-trip ms (-1 on failure). */
     suspend fun health(): Pair<Boolean, Long>
 
+    /**
+     * Background self-heal (1.0.17): probe the saved API host and, if
+     * it has rotated or died, rediscover a fresh one and persist it.
+     * Runs at app open so the first user-facing load never pays the
+     * rediscovery cost inline. Never throws.
+     */
+    suspend fun warmUp()
+
     fun currentSiteBase(): String
 
     fun currentApiBase(): String
