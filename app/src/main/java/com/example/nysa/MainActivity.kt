@@ -133,10 +133,18 @@ class MainActivity : ComponentActivity() {
                 arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 7001
             )
         }
-        // "Chỉ khi mở app" check mode: run one check per app start.
+        // 1.0.18: run a check on app start in EVERY mode, throttled
+        // by the worker's own last-check stamp (30 min). The periodic
+        // schedule alone proved too easy for the OS to starve — a
+        // month of silence with zero notifications while the worker
+        // simply never got to run. ON_OPEN keeps its old behaviour:
+        // one check per app start, unthrottled.
         lifecycleScope.launch {
             val app = application as AuraApp
-            if (app.settings.flow.first().checkInterval == "ON_OPEN") {
+            val mode = app.settings.flow.first().checkInterval
+            val lastAt = app.settings.lastCheckAt.first()
+            val stale = System.currentTimeMillis() - lastAt > 30 * 60 * 1000L
+            if (mode == "ON_OPEN" || stale) {
                 androidx.work.WorkManager.getInstance(this@MainActivity).enqueueUniqueWork(
                     "nysa_check_on_open",
                     androidx.work.ExistingWorkPolicy.REPLACE,

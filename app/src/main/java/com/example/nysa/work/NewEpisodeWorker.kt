@@ -37,6 +37,22 @@ class NewEpisodeWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // 1.0.18: never die silently — any unexpected failure still
+        // leaves a diagnostic line in Settings before the run ends.
+        return try {
+            doWorkInner()
+        } catch (e: Exception) {
+            runCatching {
+                (applicationContext as AuraApp).settings.setLastCheck(
+                    System.currentTimeMillis(),
+                    "Lỗi khi kiểm tra tập mới: ${e.javaClass.simpleName}"
+                )
+            }
+            Result.success()
+        }
+    }
+
+    private suspend fun doWorkInner(): Result {
         val app = applicationContext as AuraApp
         val settings = app.settings.flow.first()
         // App-update check (1.0.6) rides EVERY worker run — including
@@ -44,7 +60,16 @@ class NewEpisodeWorker(
         // toggle below: it stores any newer release for the in-app
         // banner and posts one system notification per version.
         runCatching { checkForAppUpdate(app, settings.lockScreenNotif) }
-        if (!settings.notifyNewEpisode) return Result.success()
+        if (!settings.notifyNewEpisode) {
+            // 1.0.18: even a skipped run leaves a diagnostic trace.
+            runCatching {
+                app.settings.setLastCheck(
+                    System.currentTimeMillis(),
+                    "Đã chạy — báo tập mới đang tắt trong Cài đặt"
+                )
+            }
+            return Result.success()
+        }
 
         val dao = app.database.userStateDao()
         val all = dao.trackedOnce()
@@ -59,14 +84,17 @@ class NewEpisodeWorker(
         )
         val updatedNames = mutableListOf<String>()
         val updatedPairs = mutableListOf<Pair<String, String>>()
+        var fetchFailures = 0
         for (st in states) {
             val entity = app.database.titleDao().observe(st.titleId).first() ?: continue
             val item = entity.toItem()
-            val total = runCatching {
+            val fetched = runCatching {
                 // NySa has one source for both families.
                 val detail = app.cobe.detailFor(item)
                 maxOf(detail.totalCount, detail.item.episodeCount)
-            }.getOrDefault(0)
+            }
+            if (fetched.isFailure) fetchFailures++
+            val total = fetched.getOrDefault(0)
             if (total <= 0) continue
             when {
                 // First check after tracking started: everything already out
@@ -103,6 +131,25 @@ class NewEpisodeWorker(
         newStamps.keys.retainAll(trackedIds)
         states.forEach { newStamps[it.titleId] = nowSec }
         runCatching { app.settings.setWorkerStamps(newStamps) }
+        // 1.0.18 diagnostics: leave a visible trace of this run in
+        // Settings — when it ran, how much it checked, what it found.
+        // The pre-1.0.18 worker could die silently for a month.
+        val summary = when {
+            states.isEmpty() ->
+                "Đã kiểm tra — chưa có bộ nào đang theo dõi"
+            fetchFailures >= states.size ->
+                "Kiểm ${states.size} bộ — không lấy được dữ liệu nguồn (mạng hoặc nguồn lỗi)"
+            updatedNames.isNotEmpty() ->
+                "Kiểm ${states.size} bộ — ${updatedNames.size} bộ có tập mới: " +
+                    updatedNames.take(3).joinToString(", ") +
+                    if (updatedNames.size > 3) "…" else ""
+            else ->
+                "Kiểm ${states.size} bộ — chưa có tập mới" +
+                    if (fetchFailures > 0) " ($fetchFailures bộ lỗi mạng)" else ""
+        }
+        runCatching {
+            app.settings.setLastCheck(System.currentTimeMillis(), summary)
+        }
         return Result.success()
     }
 

@@ -66,6 +66,8 @@ fun MeScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as AuraApp
     val settings by app.settings.flow.collectAsState(initial = AppSettings())
+    val lastCheckAt by app.settings.lastCheckAt.collectAsState(initial = 0L)
+    val lastCheckSummary by app.settings.lastCheckSummary.collectAsState(initial = "")
     val scope = rememberCoroutineScope()
     val glass = LocalGlassEnabled.current
 
@@ -233,6 +235,23 @@ fun MeScreen() {
                     ),
                     current = settings.checkInterval,
                     onPick = { scope.launch { app.settings.setString(SettingsStore.CHECK_INTERVAL, it) } }
+                )
+                SettingsDivider()
+                // 1.0.18 diagnostics: the checker leaves a visible
+                // trace — a dead checker can no longer hide for a
+                // month behind total silence.
+                Text(
+                    if (lastCheckAt <= 0L) {
+                        "Lần kiểm gần nhất: chưa từng chạy"
+                    } else {
+                        "Lần kiểm gần nhất: " +
+                            java.text.SimpleDateFormat(
+                                "HH:mm dd/MM", java.util.Locale.getDefault()
+                            ).format(java.util.Date(lastCheckAt)) +
+                            if (lastCheckSummary.isNotBlank()) " — $lastCheckSummary" else ""
+                    },
+                    color = NySaTextMuted, fontSize = 11.5.sp,
+                    modifier = Modifier.padding(vertical = 9.dp)
                 )
             }
             Spacer(Modifier.height(18.dp))

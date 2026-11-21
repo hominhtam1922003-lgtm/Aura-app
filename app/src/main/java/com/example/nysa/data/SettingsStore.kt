@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -117,6 +118,25 @@ class SettingsStore(context: Context) {
     suspend fun setWorkerStamps(stamps: Map<String, Long>) {
         store.edit { p ->
             p[WORKER_STAMPS] = stamps.entries.joinToString(";") { (id, sec) -> "$id=$sec" }
+        }
+    }
+
+    /**
+     * Diagnostics for the new-episode checker (1.0.18): when the
+     * worker last ran and what it found, in plain words. The old
+     * design failed SILENTLY — a month with zero notifications and
+     * no way to tell whether the worker ran at all. The Tôi tab
+     * shows this line so a dead checker is visible at a glance, and
+     * MainActivity uses the stamp to throttle on-open checks.
+     */
+    val lastCheckAt: Flow<Long> = store.data.map { p -> p[LAST_CHECK_AT] ?: 0L }
+
+    val lastCheckSummary: Flow<String> = store.data.map { p -> p[LAST_CHECK_SUMMARY] ?: "" }
+
+    suspend fun setLastCheck(atMillis: Long, summary: String) {
+        store.edit { p ->
+            p[LAST_CHECK_AT] = atMillis
+            p[LAST_CHECK_SUMMARY] = summary
         }
     }
 
@@ -257,6 +277,8 @@ class SettingsStore(context: Context) {
         val LIQUID_GLASS = booleanPreferencesKey("liquid_glass")
         val SEARCH_HISTORY = stringPreferencesKey("search_history")
         val WORKER_STAMPS = stringPreferencesKey("worker_check_stamps")
+        val LAST_CHECK_AT = longPreferencesKey("last_check_at_ms")
+        val LAST_CHECK_SUMMARY = stringPreferencesKey("last_check_summary")
         val INTRO_ENDS = stringPreferencesKey("intro_ends")
         val COBE_API_HOST = stringPreferencesKey("cobe_api_host")
         val COBE_SITE_HOST = stringPreferencesKey("cobe_site_host")
